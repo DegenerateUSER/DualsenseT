@@ -1,0 +1,11 @@
+# macOS
+.DS_Store
+
+# Compiled Binaries and App Bundles
+DualSenseT
+DualSenseT.app
+
+# Xcode / Swift build files (in case Xcode is used in the future)
+build/
+DerivedData/
+*.xcuserstate
