@@ -3,6 +3,7 @@ import Foundation
 import GameController
 import AppKit
 import SwiftUI
+import CoreAudio
 
 struct AssertionFailure: Error {
     let message: String
@@ -862,6 +863,159 @@ class TestSuite {
             let expected = manager.testComputeBTCRC32(Array(report[0..<74]))
             let actual = UInt32(report[74]) | (UInt32(report[75]) << 8) | (UInt32(report[76]) << 16) | (UInt32(report[77]) << 24)
             try XCTAssertEqual(actual, expected)
+        }
+
+        runTest(name: "testBTInputDeliveryIsCappedAtDisplayRate") {
+            let interval = BluetoothHIDController.testInputDeliveryIntervalNanoseconds
+            var lastDelivery: UInt64 = 0
+            let firstTimestamp: UInt64 = 1_000_000_000
+
+            try XCTAssertTrue(BluetoothHIDController.testShouldDeliverInput(
+                now: firstTimestamp, lastDelivery: &lastDelivery
+            ))
+            try XCTAssertFalse(BluetoothHIDController.testShouldDeliverInput(
+                now: firstTimestamp + interval - 1, lastDelivery: &lastDelivery
+            ))
+            try XCTAssertEqual(lastDelivery, firstTimestamp)
+            try XCTAssertTrue(BluetoothHIDController.testShouldDeliverInput(
+                now: firstTimestamp + interval, lastDelivery: &lastDelivery
+            ))
+            try XCTAssertEqual(lastDelivery, firstTimestamp + interval)
+        }
+
+        runTest(name: "testAnalogNoiseDoesNotPublishVisualChange") {
+            let manager = ControllerManager()
+            let origin = CGPoint.zero
+            try XCTAssertFalse(manager.testPointChanged(
+                from: origin, to: CGPoint(x: 0.007, y: -0.007)
+            ))
+            try XCTAssertTrue(manager.testPointChanged(
+                from: origin, to: CGPoint(x: 0.009, y: 0)
+            ))
+        }
+
+        runTest(name: "testDualSenseUSBAudioDeviceMatching") {
+            try XCTAssertTrue(ControllerAudioService.isDualSenseAudioDevice(
+                name: "DualSense Wireless Controller",
+                manufacturer: "Sony Interactive Entertainment",
+                transportType: kAudioDeviceTransportTypeUSB
+            ))
+            try XCTAssertFalse(ControllerAudioService.isDualSenseAudioDevice(
+                name: "DualSense Wireless Controller",
+                manufacturer: "Sony Interactive Entertainment",
+                transportType: kAudioDeviceTransportTypeBluetooth
+            ))
+            try XCTAssertFalse(ControllerAudioService.isDualSenseAudioDevice(
+                name: "MacBook Air Speakers",
+                manufacturer: "Apple Inc.",
+                transportType: kAudioDeviceTransportTypeBuiltIn
+            ))
+        }
+
+        runTest(name: "testControllerAudioQuadraphonicReadiness") {
+            let info = ControllerAudioDeviceInfo(
+                outputDeviceID: 1,
+                inputDeviceID: 2,
+                outputUID: "output",
+                inputUID: "input",
+                name: "DualSense Wireless Controller",
+                manufacturer: "Sony Interactive Entertainment",
+                outputChannels: 4,
+                inputChannels: 2,
+                sampleRate: 48_000,
+                channelLayoutTag: kAudioChannelLayoutTag_Quadraphonic,
+                channelLayoutSettable: true
+            )
+            try XCTAssertTrue(info.isQuadraphonic)
+            try XCTAssertEqual(
+                info.channelLayoutName,
+                "Quadraphonic (L, R, Haptic L, Haptic R)"
+            )
+        }
+
+        runTest(name: "testUSBAudioControlsSerializeWithoutChangingTriggerOffsets") {
+            let manager = ControllerManager()
+            manager.mockHIDMode = true
+            manager.mockHIDTransport = "USB"
+            manager.controllerAudioControlsEnabled = true
+            manager.controllerAudioOutputRoute = .controllerSpeaker
+            manager.controllerAudioInputRoute = .controllerMicrophone
+            manager.controllerHeadphoneVolume = 0.5
+            manager.controllerSpeakerVolume = 0.75
+            manager.controllerMicrophoneVolume = 0.25
+            manager.controllerMicrophoneMuted = true
+            manager.r2Mode = .weapon
+            manager.applyTriggerSettingsViaHID()
+
+            guard let report = manager.capturedUSBReport else {
+                throw AssertionFailure(message: "no USB audio report captured")
+            }
+            try XCTAssertEqual(report.count, 48)
+            try XCTAssertEqual(report[1], 0xFF) // existing rumble/trigger flags + all audio flags
+            try XCTAssertEqual(report[2], 0x97) // mic/lightbar/player + power-save + audio2
+            try XCTAssertEqual(report[5], 64)   // 50% of headphone range 0...127
+            try XCTAssertEqual(report[6], 75)   // 75% of speaker's effective 0...100 range
+            try XCTAssertEqual(report[7], 16)   // 25% of microphone range 0...64
+            try XCTAssertEqual(report[8], 0xB0) // controller speaker (0x30) + controller mic (0x80)
+            try XCTAssertEqual(report[10], 0x10) // microphone power-save mute
+            try XCTAssertEqual(report[11], 0x25) // R2 trigger mode offset remains unchanged
+            try XCTAssertEqual(report[38], 0x02) // controller speaker pre-gain
+        }
+
+        runTest(name: "testAudioControlFlagsAreNeverSentOverBluetooth") {
+            let manager = ControllerManager()
+            manager.mockHIDMode = true
+            manager.mockHIDTransport = "BT"
+            manager.controllerAudioControlsEnabled = true
+            manager.controllerAudioOutputRoute = .controllerSpeaker
+            manager.controllerMicrophoneMuted = true
+            manager.applyTriggerSettingsViaHID()
+
+            guard let report = manager.capturedBTReport else {
+                throw AssertionFailure(message: "no BT report captured")
+            }
+            try XCTAssertEqual(report[3], 0x0F) // no USB audio bits
+            try XCTAssertEqual(report[4], 0x15) // no USB power-save/audio2 bits
+            try XCTAssertEqual(report[7], 0x00) // headphone-volume field untouched
+            try XCTAssertEqual(report[8], 0x00) // speaker-volume field untouched
+            try XCTAssertEqual(report[9], 0x00) // microphone-volume field untouched
+            try XCTAssertEqual(report[10], 0x00) // audio-route field untouched
+        }
+
+        runTest(name: "testUSBAudioHapticsModeTemporarilyReleasesClassicRumble") {
+            let manager = ControllerManager()
+            manager.mockHIDMode = true
+            manager.mockHIDTransport = "USB"
+            manager.rumbleRightIntensity = 200
+            manager.rumbleLeftIntensity = 180
+            manager.r2Mode = .feedback
+            manager.audioHapticsModeEnabled = true
+            manager.applyTriggerSettingsViaHID()
+
+            guard let hapticsReport = manager.capturedUSBReport else {
+                throw AssertionFailure(message: "no USB haptics-mode report captured")
+            }
+            try XCTAssertEqual(hapticsReport[1], 0x0D) // bit 1 USE_RUMBLE_NO_HAPTICS cleared
+            try XCTAssertEqual(hapticsReport[3], 0x00) // classic motors gracefully stopped
+            try XCTAssertEqual(hapticsReport[4], 0x00)
+            try XCTAssertEqual(hapticsReport[11], 0x21) // adaptive trigger remains enabled
+            try XCTAssertEqual(hapticsReport[39], 0x00) // improved classic rumble disabled
+
+            manager.audioHapticsModeEnabled = false
+            manager.applyTriggerSettingsViaHID()
+            guard let restoredReport = manager.capturedUSBReport else {
+                throw AssertionFailure(message: "no restored USB rumble report captured")
+            }
+            try XCTAssertEqual(restoredReport[1], 0x0F)
+            try XCTAssertEqual(restoredReport[3], 200)
+            try XCTAssertEqual(restoredReport[4], 180)
+            try XCTAssertEqual(restoredReport[39], 0x04)
+        }
+
+        runTest(name: "testSystemAudioMeterNormalization") {
+            try XCTAssertEqual(SystemAudioCaptureService.meterLevel(forRMS: -0.1), 0)
+            try XCTAssertEqual(SystemAudioCaptureService.meterLevel(forRMS: 0.1), 0.4)
+            try XCTAssertEqual(SystemAudioCaptureService.meterLevel(forRMS: 0.5), 1)
         }
 
         runTest(name: "testBTInputReportRejectsShortBuffer") {

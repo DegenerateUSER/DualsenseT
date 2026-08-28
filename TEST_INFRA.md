@@ -107,14 +107,22 @@ To execute the test suite, run the following command in the project root:
 60. `testUSBLEDSetupIsDedicatedReport`: Verifies USB LED ownership setup is its own 48-byte LIGHT_OUT report with no state mixed in.
 61. `testBTLEDSetupIsDedicatedSignedReport`: Verifies the BT LED setup report has its own sequence number, required tag, LIGHT_OUT payload, and valid CRC32.
 
+### Tier 7: Runtime CPU Guardrails (2 Test Cases)
+62. `testBTInputDeliveryIsCappedAtDisplayRate`: Verifies high-rate Bluetooth reports cannot be delivered to SwiftUI faster than the 60 Hz UI budget.
+63. `testAnalogNoiseDoesNotPublishVisualChange`: Verifies one-count stick jitter is suppressed while meaningful movement still updates.
+
+### Tier 8: USB Controller Audio Discovery (2 Test Cases)
+64. `testDualSenseUSBAudioDeviceMatching`: Verifies discovery accepts Sony DualSense USB audio endpoints while rejecting Bluetooth and unrelated built-in devices.
+65. `testControllerAudioQuadraphonicReadiness`: Verifies a four-channel device with the Quadraphonic tag is recognized as L/R/Haptic-L/Haptic-R ready.
+
 ---
 
 ## Coverage Summary
 
-- **Total Test Cases**: 61
-- **Pass Rate**: 100% (61/61)
+- **Total Test Cases**: 65
+- **Pass Rate**: 100% (65/65)
 - **Status**: Verified and Green
-- **Last Verified**: 28/08/2026 (after the hardware-feedback output protocol correction)
+- **Last Verified**: 28/08/2026 (after USB audio discovery and Quadraphonic setup)
 - **Execution Log**:
   ```
   Compiling and running DualSenseT Unit Tests...
@@ -127,8 +135,8 @@ To execute the test suite, run the following command in the project root:
   ========================================
               TEST SUMMARY                
   ========================================
-    Passed: 61
+    Passed: 65
     Failed: 0
-    Total:  61
+    Total:  65
   ========================================
   ```

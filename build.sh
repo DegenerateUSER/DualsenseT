@@ -7,14 +7,14 @@ clang -target arm64-apple-macosx14.0 -c Sources/CHidapi/mac/hid.c -o hid_mac.o -
 
 if [ "$1" == "test" ]; then
     echo "Compiling and running DualSenseT Unit Tests..."
-    swiftc -DTESTING -target arm64-apple-macosx14.0 -import-objc-header Sources/CHidapi/bridging-header.h -Xcc -ISources/CHidapi/include -framework AppKit -framework SwiftUI -framework GameController -framework Network -framework IOKit -framework CoreHaptics $(find Sources -name "*.swift") Tests/Tests.swift hid_mac.o -o test_runner
+    swiftc -DTESTING -target arm64-apple-macosx14.0 -import-objc-header Sources/CHidapi/bridging-header.h -Xcc -ISources/CHidapi/include -framework AppKit -framework SwiftUI -framework GameController -framework Network -framework IOKit -framework CoreHaptics -framework CoreAudio -framework AudioToolbox -framework AVFAudio -framework ScreenCaptureKit -framework CoreMedia $(find Sources -name "*.swift") Tests/Tests.swift hid_mac.o -o test_runner
     ./test_runner
     rm test_runner hid_mac.o
     exit 0
 fi
 
 echo "Compiling DualSenseT binary..."
-swiftc -target arm64-apple-macosx14.0 -import-objc-header Sources/CHidapi/bridging-header.h -Xcc -ISources/CHidapi/include $(find Sources -name "*.swift") hid_mac.o -framework AppKit -framework SwiftUI -framework GameController -framework Network -framework IOKit -framework CoreHaptics -o DualSenseT
+swiftc -target arm64-apple-macosx14.0 -import-objc-header Sources/CHidapi/bridging-header.h -Xcc -ISources/CHidapi/include $(find Sources -name "*.swift") hid_mac.o -framework AppKit -framework SwiftUI -framework GameController -framework Network -framework IOKit -framework CoreHaptics -framework CoreAudio -framework AudioToolbox -framework AVFAudio -framework ScreenCaptureKit -framework CoreMedia -o DualSenseT
 rm -f hid_mac.o
 
 echo "Packaging as macOS App Bundle (DualSenseT.app)..."
@@ -57,6 +57,10 @@ cat <<EOF > DualSenseT.app/Contents/Info.plist
     <true/>
     <key>GCSupportsControllerUserInteraction</key>
     <true/>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>DualSenseT captures game and system audio only when you enable Audio Haptics, converting it locally into controller vibration.</string>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>DualSenseT uses macOS system audio capture only when you enable Audio Haptics. No video is stored or transmitted.</string>
     <key>GCSupportedGameControllers</key>
     <array>
         <dict>

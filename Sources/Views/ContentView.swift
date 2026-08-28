@@ -5,6 +5,7 @@ public enum AppTab {
     case triggersR2
     case led
     case haptics
+    case audio
     case visualizer
     case sensors
     case server
@@ -16,12 +17,22 @@ public struct ContentView: View {
     @ObservedObject var manager: ControllerManager
     @ObservedObject var presetManager: PresetManager
     @ObservedObject var udpListener: UDPListener
+    @ObservedObject var controllerAudioService: ControllerAudioService
+    @ObservedObject var systemAudioCaptureService: SystemAudioCaptureService
     @State private var activeTab: AppTab = .visualizer
     
-    public init(manager: ControllerManager, presetManager: PresetManager, udpListener: UDPListener) {
+    public init(
+        manager: ControllerManager,
+        presetManager: PresetManager,
+        udpListener: UDPListener,
+        controllerAudioService: ControllerAudioService,
+        systemAudioCaptureService: SystemAudioCaptureService
+    ) {
         self.manager = manager
         self.presetManager = presetManager
         self.udpListener = udpListener
+        self.controllerAudioService = controllerAudioService
+        self.systemAudioCaptureService = systemAudioCaptureService
     }
     
     public var body: some View {
@@ -88,6 +99,9 @@ public struct ContentView: View {
                         SidebarButton(title: "Haptics", icon: "waveform", isActive: activeTab == .haptics) {
                             activeTab = .haptics
                         }
+                        SidebarButton(title: "Audio (USB)", icon: "speaker.wave.2", isActive: activeTab == .audio) {
+                            activeTab = .audio
+                        }
                         SidebarButton(title: "Live Map", icon: "gamecontroller", isActive: activeTab == .visualizer) {
                             activeTab = .visualizer
                         }
@@ -146,6 +160,12 @@ public struct ContentView: View {
                         LEDColorView(manager: manager)
                     case .haptics:
                         RumbleTestView(manager: manager)
+                    case .audio:
+                        ControllerAudioView(
+                            service: controllerAudioService,
+                            captureService: systemAudioCaptureService,
+                            manager: manager
+                        )
                     case .visualizer:
                         ControllerVisualizerView(manager: manager)
                     case .sensors:

@@ -1,6 +1,6 @@
 # DualSenseT User Manual & Technical Documentation
 
-DualSenseT is a high-performance, open-source macOS utility designed to customize, test, monitor, and emulate the PlayStation 5 DualSense and DualSense Edge controllers. It serves as a native macOS alternative to paid software like *DualSenseM* and Windows-only utilities like *DualSenseX*.
+DualSenseT is a high-performance, source-available macOS utility designed to customize, test, monitor, and integrate the PlayStation 5 DualSense and DualSense Edge controllers. It serves as a native macOS alternative to software like *DualSenseM* and Windows-only utilities like *DualSenseX*. An OSI license is planned before the project is marketed as open source.
 
 The application operates in a dual mode: as a lightweight system **Menu Bar Helper** that runs persistently in the background, and as a rich **SwiftUI Dashboard** offering granular customization and real-time sensor diagnostics.
 
@@ -20,7 +20,7 @@ The application operates in a dual mode: as a lightweight system **Menu Bar Help
    * [Settings (Touchpad Gestures & Profiles)](#8-settings)
 4. [Advanced Engineering Features](#advanced-engineering-features)
    * [Adaptive IMU Complementary Filter](#adaptive-imu-complementary-filter)
-   * [Zero-CPU Idle Optimization](#zero-cpu-idle-optimization)
+   * [Runtime CPU Optimization](#runtime-cpu-optimization)
    * [Raw HID Background Override](#raw-hid-background-override)
 5. [Compilation & Unit Testing](#compilation--unit-testing)
 
@@ -28,10 +28,10 @@ The application operates in a dual mode: as a lightweight system **Menu Bar Help
 
 ## System Requirements & Setup
 
-* **Operating System:** macOS 13.0 (Ventura) or newer.
+* **Operating System:** macOS 14.0 (Sonoma) or newer on Apple silicon.
 * **Supported Hardware:** PlayStation 5 DualSense Controller (CFI-ZCT1W) or DualSense Edge Controller (CFI-ZCP1).
 * **Connection Type:**
-  * **Bluetooth (Wireless):** Supported for all features (Adaptive Triggers, LED Lightbar, Rumble, Mic LED, Touchpad, Gyro/Accel) via Apple's GameController framework combined with raw HID overrides.
+  * **Bluetooth (Wireless):** Hardware-verified for adaptive triggers, LED lightbar, rumble, mic/player LEDs, touchpad, gyro/accelerometer, battery, and live input through the app's exclusive raw-HID path.
   * **USB (Wired):** Plug-and-play. Ensures lowest possible latency.
 
 ---
@@ -52,7 +52,7 @@ A clean, premium, semi-transparent SwiftUI dashboard. You can close the main das
 ## Tab-by-Tab Dashboard Guide
 
 ### 1. Left Trigger (L2) & Right Trigger (R2)
-These tabs let you configure Sony's physical **Adaptive Triggers** to simulate different mechanical behaviors. DualSenseT supports **11 trigger modes** — more than any other macOS controller utility.
+These tabs let you configure Sony's physical **Adaptive Triggers** to simulate different mechanical behaviors. DualSenseT exposes **11 editable native trigger modes** and maps 19 DualSenseX UDP trigger types to their closest supported effect.
 
 #### Basic Modes:
 * **Off (Default):** Normal trigger pull. No added resistance or haptic feedback.
@@ -118,8 +118,8 @@ A dedicated tab for **rumble motors**, **microphone LED**, and **player indicato
 ### 4. Live Map (Visualizer)
 Provides a real-time vector schematic of the controller to diagnose inputs.
 * **Button Highlights:** Pressing buttons (Cross, Circle, Square, Triangle, L1, R1, Options, Create, PS) highlights the corresponding key in blue.
-* **Joysticks Tracking:** Left/Right analog sticks coordinates are drawn on active 2D grids with precise coordinate displays.
-* **Touchpad coordinate mapping:** Displays the coordinates of one or two active fingers touching the controller touchpad, complete with fading pointer trails.
+* **Joystick Tracking:** Left/right analog caps move proportionally on the controller schematic, with L3/R3 press feedback.
+* **Touchpad Mapping:** Displays one or two active fingers on the controller touchpad with animated ripple markers. Precise numeric coordinates are available in the Sensors tab.
 
 ---
 
@@ -141,7 +141,7 @@ Emulates the **DualSenseX UDP Server protocol** on port `6969`.
 
 ### 7. Presets
 Manage custom profiles.
-* **13 Default Presets:** Including *Bow & Arrow*, *Heavy Rifle*, *Racing Brake*, *Soft Click*, *Galloping*, *Machine Gun*, *Heavy Spring*, *Semi-Auto Pistol*, *Automatic Rifle*, *Bumpy Road*, *Slope Brake*, and *Off*.
+* **12 Default Presets:** *Bow & Arrow*, *Heavy Rifle*, *Racing Brake*, *Soft Click*, *Galloping*, *Machine Gun*, *Heavy Spring*, *Semi-Auto Pistol*, *Automatic Rifle*, *Bumpy Road*, *Slope Brake*, and *Off*.
 * **Save Current Preset:** Save your active L2/R2 trigger settings, LED color, and haptic pulsing configurations into a named preset.
 * **Custom Presets:** List, apply, or delete your custom saved presets. Presets are saved locally as standard JSON files with backward-compatible loading.
 
@@ -171,11 +171,18 @@ The macOS `GameController` framework does not natively populate the `attitude` q
    * When stationary, the filter gain increases ($k_{acc} = 0.1$) to quickly align the controller flat to gravity.
 4. **Resting Auto-Decay:** When resting still, the integrated yaw (which has no absolute compass reference) decays slowly back to $0.0$, eliminating yaw drift.
 
-### Zero-CPU Idle Optimization
-To prevent main thread UI flooding and high CPU utilization from high-frequency controller vibration notifications (which fire at 150Hz+), the app:
-* Dynamically disables motion sensors (`sensorsActive = false`) when the dashboard is closed, minimized, or switched away from the Sensors tab.
-* Bypasses main-thread dispatches for stick and button updates when the window is hidden.
-* Reduces idle CPU usage to **0.0%**.
+### Runtime CPU Optimization
+DualSense input reports and motion samples can arrive hundreds of times per second, far
+faster than a display can render. To avoid wasting CPU while preserving controller fidelity:
+* Bluetooth input is drained continuously but decoded and delivered to the UI at no more than 60 Hz.
+* Button state is published as one coalesced snapshot; unchanged battery, button, trigger,
+  stick, and touch values are not republished.
+* One-count analog stick jitter is filtered from visual updates.
+* Motion fusion still consumes high-rate sensor samples for accuracy, while SwiftUI attitude
+  rendering is capped at 60 Hz.
+* Motion and live UI publication stop when the dashboard is closed, minimized, or fully
+  occluded by another window.
+* Lightbar breathing uses 10 HID updates per second instead of 20.
 
 ### Raw HID Background Override
 The macOS `GameController` framework ceases sending output reports to controllers when the host application loses window focus. To keep adaptive triggers active when you click away to play a game, DualSenseT implements a multi-layered persistence system:

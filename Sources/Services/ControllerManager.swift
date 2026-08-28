@@ -61,6 +61,33 @@ public class ControllerManager: ObservableObject {
     // Rumble Motor Intensity (0-255)
     @Published public var rumbleLeftIntensity: UInt8 = 0 { didSet { applyHardwareState() } }
     @Published public var rumbleRightIntensity: UInt8 = 0 { didSet { applyHardwareState() } }
+
+    // USB controller audio controls. These map to the audio fields in the same 0x02
+    // output report as triggers/LEDs; Bluetooth never receives these flags.
+    @Published public var controllerAudioControlsEnabled = false { didSet { applyHardwareState() } }
+    @Published public var controllerAudioOutputRoute: ControllerAudioOutputRoute = .controllerSpeaker {
+        didSet { if controllerAudioControlsEnabled { applyHardwareState() } }
+    }
+    @Published public var controllerAudioInputRoute: ControllerAudioInputRoute = .automatic {
+        didSet { if controllerAudioControlsEnabled { applyHardwareState() } }
+    }
+    @Published public var controllerHeadphoneVolume: Double = 0.8 {
+        didSet { if controllerAudioControlsEnabled { applyHardwareState() } }
+    }
+    @Published public var controllerSpeakerVolume: Double = 0.8 {
+        didSet { if controllerAudioControlsEnabled { applyHardwareState() } }
+    }
+    @Published public var controllerMicrophoneVolume: Double = 0.8 {
+        didSet { if controllerAudioControlsEnabled { applyHardwareState() } }
+    }
+    @Published public var controllerMicrophoneMuted = false {
+        didSet { if controllerAudioControlsEnabled { applyHardwareState() } }
+    }
+    /// USB-only selector between classic rumble emulation and raw PCM haptic actuators.
+    /// Default false preserves the hardware-verified normal rumble behavior.
+    @Published public var audioHapticsModeEnabled = false {
+        didSet { applyHardwareState() }
+    }
     
     // Touchpad Gesture Remapping State
     @Published public var touchpadActions: [String: String] = [
@@ -93,8 +120,18 @@ public class ControllerManager: ObservableObject {
     private var filteredRoll: Double = 0.0
     private var filteredYaw: Double = 0.0
     private var lastMotionTimestamp: TimeInterval = 0.0
+    private var lastMotionUIPublishTimestamp: TimeInterval = 0.0
     private var rawMotionAttitude: GCQuaternion = GCQuaternion(x: 0, y: 0, z: 0, w: 1)
     private var sensorReferenceOrientation: GCQuaternion = GCQuaternion(x: 0, y: 0, z: 0, w: 1)
+
+    private struct ControllerAudioHIDState {
+        let outputRoute: ControllerAudioOutputRoute
+        let inputRoute: ControllerAudioInputRoute
+        let headphoneVolume: Double
+        let speakerVolume: Double
+        let microphoneVolume: Double
+        let microphoneMuted: Bool
+    }
     
     // Raw HID output state for background trigger persistence
     private var hidManager: IOHIDManager?
@@ -260,15 +297,22 @@ public class ControllerManager: ObservableObject {
     public func testTriggerModeToHIDBytes(mode: TriggerMode, start: Float, end: Float, strength: Float, amplitude: Float, frequency: Float, endStrength: Float = 0) -> (mode: UInt8, params: [UInt8]) {
         return triggerModeToHIDBytes(mode: mode, start: start, end: end, strength: strength, amplitude: amplitude, frequency: frequency, endStrength: endStrength)
     }
+
+    public func testPointChanged(from old: CGPoint, to new: CGPoint) -> Bool {
+        pointChanged(from: old, to: new)
+    }
     
     private func captureUSBReport(r2: (mode: UInt8, params: [UInt8]), l2: (mode: UInt8, params: [UInt8]),
                                   ledR: UInt8, ledG: UInt8, ledB: UInt8,
-                                  rumbleR: UInt8, rumbleL: UInt8, mic: UInt8, players: UInt8) -> IOReturn {
+                                  rumbleR: UInt8, rumbleL: UInt8, mic: UInt8, players: UInt8,
+                                  audio: ControllerAudioHIDState?,
+                                  audioHapticsEnabled: Bool) -> IOReturn {
         // Capture the production builder itself. Keeping a second hand-written TESTING
         // serializer previously let its flags drift away from the report sent to hardware.
         self.capturedUSBReport = buildUSBOutputReport(
             r2: r2, l2: l2, ledR: ledR, ledG: ledG, ledB: ledB,
-            rumbleR: rumbleR, rumbleL: rumbleL, mic: mic, players: players
+            rumbleR: rumbleR, rumbleL: rumbleL, mic: mic, players: players,
+            audio: audio, audioHapticsEnabled: audioHapticsEnabled
         )
         return kIOReturnSuccess
     }
@@ -409,33 +453,62 @@ public class ControllerManager: ObservableObject {
 
     private func handleBluetoothInput(_ sample: BluetoothHIDController.InputSample) {
         if isUIVisible {
-            for (key, value) in sample.buttons {
-                buttonsPressed[key] = value
+            // Publish one dictionary change per frame instead of one change per button.
+            // At the controller's native report rate, the old loop could invalidate SwiftUI
+            // dozens of times for a single physical sample.
+            var latestButtons = sample.buttons
+            latestButtons["l2"] = sample.leftTrigger > 0.05
+            latestButtons["r2"] = sample.rightTrigger > 0.05
+            if buttonsPressed != latestButtons {
+                buttonsPressed = latestButtons
             }
-            leftStickValue = sample.leftStick
-            rightStickValue = sample.rightStick
-            buttonsPressed["l2"] = sample.leftTrigger > 0.05
-            buttonsPressed["r2"] = sample.rightTrigger > 0.05
-        }
-        leftTriggerValue = sample.leftTrigger
-        rightTriggerValue = sample.rightTrigger
 
-        touchpadPrimaryActive = sample.touchpadPrimaryActive
+            if pointChanged(from: leftStickValue, to: sample.leftStick) {
+                leftStickValue = sample.leftStick
+            }
+            if pointChanged(from: rightStickValue, to: sample.rightStick) {
+                rightStickValue = sample.rightStick
+            }
+            if abs(leftTriggerValue - sample.leftTrigger) >= 0.004 {
+                leftTriggerValue = sample.leftTrigger
+            }
+            if abs(rightTriggerValue - sample.rightTrigger) >= 0.004 {
+                rightTriggerValue = sample.rightTrigger
+            }
+            if touchpadPrimaryActive != sample.touchpadPrimaryActive {
+                touchpadPrimaryActive = sample.touchpadPrimaryActive
+            }
+            if sample.touchpadPrimaryActive,
+               pointChanged(from: touchpadPrimary, to: sample.touchpadPrimary) {
+                touchpadPrimary = sample.touchpadPrimary
+            }
+            if touchpadSecondaryActive != sample.touchpadSecondaryActive {
+                touchpadSecondaryActive = sample.touchpadSecondaryActive
+            }
+            if sample.touchpadSecondaryActive,
+               pointChanged(from: touchpadSecondary, to: sample.touchpadSecondary) {
+                touchpadSecondary = sample.touchpadSecondary
+            }
+        }
+
+        // Gesture recognition remains active when the dashboard is hidden, but it no longer
+        // forces the visualizer's @Published state to refresh in the background.
         if sample.touchpadPrimaryActive {
-            if isUIVisible { touchpadPrimary = sample.touchpadPrimary }
             // BT has an explicit contact bit (handled by the else branch), and (0, 0)
             // is the valid touchpad center pixel — don't treat it as a release.
             handleTouchpadUpdate(x: Float(sample.touchpadPrimary.x), y: Float(sample.touchpadPrimary.y), resetOnZero: false)
-        } else {
+        } else if touchStart != nil {
             resetTouchpadGesture()
         }
-        touchpadSecondaryActive = sample.touchpadSecondaryActive
-        if sample.touchpadSecondaryActive, isUIVisible {
-            touchpadSecondary = sample.touchpadSecondary
-        }
 
-        batteryLevel = sample.batteryLevel
-        batteryState = sample.batteryFull ? .full : (sample.batteryCharging ? .charging : .discharging)
+        if batteryLevel != sample.batteryLevel {
+            batteryLevel = sample.batteryLevel
+        }
+        let latestBatteryState: GCDeviceBattery.State =
+            sample.batteryFull ? .full : (sample.batteryCharging ? .charging : .discharging)
+        if batteryState != latestBatteryState {
+            batteryState = latestBatteryState
+        }
 
         // Sensors tab over Bluetooth: feed the same complementary filter the
         // GameController motion callback uses. DualSense gyro full scale is
@@ -451,6 +524,12 @@ public class ControllerManager: ObservableObject {
                                 accY: sample.accel.y / 8192.0,
                                 accZ: sample.accel.z / 8192.0)
         }
+    }
+
+    /// Ignore one-count 8-bit stick jitter (roughly 0.0078 normalized) so an idle
+    /// controller does not continuously rebuild SwiftUI.
+    private func pointChanged(from old: CGPoint, to new: CGPoint) -> Bool {
+        abs(old.x - new.x) >= 0.008 || abs(old.y - new.y) >= 0.008
     }
 
     /// A DualSense-family GCController connecting while our own raw-HID enumeration also
@@ -612,15 +691,23 @@ public class ControllerManager: ObservableObject {
         gamepad.leftTrigger.valueChangedHandler = { [weak self] (_, value, pressed) in
             guard let self = self, self.isUIVisible else { return }
             DispatchQueue.main.async {
-                self.buttonsPressed["l2"] = pressed
-                self.leftTriggerValue = value
+                if self.buttonsPressed["l2"] != pressed {
+                    self.buttonsPressed["l2"] = pressed
+                }
+                if abs(self.leftTriggerValue - value) >= 0.004 {
+                    self.leftTriggerValue = value
+                }
             }
         }
         gamepad.rightTrigger.valueChangedHandler = { [weak self] (_, value, pressed) in
             guard let self = self, self.isUIVisible else { return }
             DispatchQueue.main.async {
-                self.buttonsPressed["r2"] = pressed
-                self.rightTriggerValue = value
+                if self.buttonsPressed["r2"] != pressed {
+                    self.buttonsPressed["r2"] = pressed
+                }
+                if abs(self.rightTriggerValue - value) >= 0.004 {
+                    self.rightTriggerValue = value
+                }
             }
         }
         
@@ -643,11 +730,21 @@ public class ControllerManager: ObservableObject {
         
         gamepad.leftThumbstick.valueChangedHandler = { [weak self] (_, x, y) in
             guard let self = self, self.isUIVisible else { return }
-            DispatchQueue.main.async { self.leftStickValue = CGPoint(x: CGFloat(x), y: CGFloat(y)) }
+            let point = CGPoint(x: CGFloat(x), y: CGFloat(y))
+            DispatchQueue.main.async {
+                if self.pointChanged(from: self.leftStickValue, to: point) {
+                    self.leftStickValue = point
+                }
+            }
         }
         gamepad.rightThumbstick.valueChangedHandler = { [weak self] (_, x, y) in
             guard let self = self, self.isUIVisible else { return }
-            DispatchQueue.main.async { self.rightStickValue = CGPoint(x: CGFloat(x), y: CGFloat(y)) }
+            let point = CGPoint(x: CGFloat(x), y: CGFloat(y))
+            DispatchQueue.main.async {
+                if self.pointChanged(from: self.rightStickValue, to: point) {
+                    self.rightStickValue = point
+                }
+            }
         }
         
         if let l3 = gamepad.leftThumbstickButton {
@@ -687,8 +784,13 @@ public class ControllerManager: ObservableObject {
                 guard let self = self else { return }
                 DispatchQueue.main.async {
                     if self.isUIVisible {
-                        self.touchpadPrimary = CGPoint(x: CGFloat(x), y: CGFloat(y))
-                        self.touchpadPrimaryActive = true
+                        let point = CGPoint(x: CGFloat(x), y: CGFloat(y))
+                        if self.pointChanged(from: self.touchpadPrimary, to: point) {
+                            self.touchpadPrimary = point
+                        }
+                        if !self.touchpadPrimaryActive {
+                            self.touchpadPrimaryActive = true
+                        }
                         self.touchpadPrimaryTimeout?.invalidate()
                         self.touchpadPrimaryTimeout = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
                             self?.touchpadPrimaryActive = false
@@ -701,8 +803,13 @@ public class ControllerManager: ObservableObject {
             ds.touchpadSecondary.valueChangedHandler = { [weak self] (_, x, y) in
                 guard let self = self, self.isUIVisible else { return }
                 DispatchQueue.main.async {
-                    self.touchpadSecondary = CGPoint(x: CGFloat(x), y: CGFloat(y))
-                    self.touchpadSecondaryActive = true
+                    let point = CGPoint(x: CGFloat(x), y: CGFloat(y))
+                    if self.pointChanged(from: self.touchpadSecondary, to: point) {
+                        self.touchpadSecondary = point
+                    }
+                    if !self.touchpadSecondaryActive {
+                        self.touchpadSecondaryActive = true
+                    }
                     self.touchpadSecondaryTimeout?.invalidate()
                     self.touchpadSecondaryTimeout = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
                         self?.touchpadSecondaryActive = false
@@ -729,6 +836,7 @@ public class ControllerManager: ObservableObject {
             self.filteredRoll = 0.0
             self.filteredYaw = 0.0
             self.lastMotionTimestamp = 0.0
+            self.lastMotionUIPublishTimestamp = 0.0
         }
 
         guard let controller = activeController else { return }
@@ -871,10 +979,18 @@ public class ControllerManager: ObservableObject {
                 let finalAttitude = GCQuaternion(x: finalX, y: finalY, z: finalZ, w: finalW)
                 
                 self.motionUpdateCount += 1
-                if self.motionUpdateCount % 200 == 0 {
+                if self.motionUpdateCount % 1000 == 0 {
                     logToFile("Motion callback \(self.motionUpdateCount): rotX=\(String(format: "%.3f", gyroX)), rotY=\(String(format: "%.3f", gyroY)), rotZ=\(String(format: "%.3f", gyroZ)) | calculatedAttitude: w=\(String(format: "%.3f", qwNorm)), x=\(String(format: "%.3f", qxNorm)), y=\(String(format: "%.3f", qyNorm)), z=\(String(format: "%.3f", qzNorm))")
                 }
-                
+
+                // Keep the high-rate samples for filter accuracy, but do not ask SwiftUI to
+                // render faster than the display. This is especially important on USB, where
+                // GameController motion callbacks commonly arrive around 250 Hz.
+                guard self.lastMotionUIPublishTimestamp == 0.0
+                        || now - self.lastMotionUIPublishTimestamp >= (1.0 / 60.0) else {
+                    return
+                }
+                self.lastMotionUIPublishTimestamp = now
                 DispatchQueue.main.async {
                     self.motionAttitude = finalAttitude
                 }
@@ -1286,6 +1402,17 @@ public class ControllerManager: ObservableObject {
         let mic = micLEDState
         let players = playerLEDs & 0x1F
         let connType = connectionType
+        let audioHapticsEnabled = audioHapticsModeEnabled
+        let audioState: ControllerAudioHIDState? = controllerAudioControlsEnabled
+            ? ControllerAudioHIDState(
+                outputRoute: controllerAudioOutputRoute,
+                inputRoute: controllerAudioInputRoute,
+                headphoneVolume: controllerHeadphoneVolume,
+                speakerVolume: controllerSpeakerVolume,
+                microphoneVolume: controllerMicrophoneVolume,
+                microphoneMuted: controllerMicrophoneMuted
+            )
+            : nil
         
         #if TESTING
         if mockHIDMode {
@@ -1298,7 +1425,8 @@ public class ControllerManager: ObservableObject {
                 _ = captureUSBReport(r2: r2HID, l2: l2HID,
                                      ledR: finalR, ledG: finalG, ledB: finalB,
                                      rumbleR: rumbleR, rumbleL: rumbleL,
-                                     mic: mic, players: players)
+                                     mic: mic, players: players, audio: audioState,
+                                     audioHapticsEnabled: audioHapticsEnabled)
             }
             return
         }
@@ -1332,7 +1460,9 @@ public class ControllerManager: ObservableObject {
             self.sendOutputReportOnQueue(r2: r2HID, l2: l2HID,
                                          ledR: finalR, ledG: finalG, ledB: finalB,
                                          rumbleR: rumbleR, rumbleL: rumbleL,
-                                         mic: mic, players: players, connectionType: connType)
+                                         mic: mic, players: players, audio: audioState,
+                                         audioHapticsEnabled: audioHapticsEnabled,
+                                         connectionType: connType)
         }
     }
 
@@ -1341,6 +1471,8 @@ public class ControllerManager: ObservableObject {
     private func sendOutputReportOnQueue(r2: (mode: UInt8, params: [UInt8]), l2: (mode: UInt8, params: [UInt8]),
                                          ledR: UInt8, ledG: UInt8, ledB: UInt8,
                                          rumbleR: UInt8, rumbleL: UInt8, mic: UInt8, players: UInt8,
+                                         audio: ControllerAudioHIDState?,
+                                         audioHapticsEnabled: Bool,
                                          connectionType: String) {
         if bluetoothHID.isConnected {
             if !btLEDControlInitialized {
@@ -1428,7 +1560,7 @@ public class ControllerManager: ObservableObject {
             failedPurpose = "state"
             let report = isBT
                 ? buildBTOutputReport(r2: r2, l2: l2, ledR: ledR, ledG: ledG, ledB: ledB, rumbleR: rumbleR, rumbleL: rumbleL, mic: mic, players: players)
-                : buildUSBOutputReport(r2: r2, l2: l2, ledR: ledR, ledG: ledG, ledB: ledB, rumbleR: rumbleR, rumbleL: rumbleL, mic: mic, players: players)
+                : buildUSBOutputReport(r2: r2, l2: l2, ledR: ledR, ledG: ledG, ledB: ledB, rumbleR: rumbleR, rumbleL: rumbleL, mic: mic, players: players, audio: audio, audioHapticsEnabled: audioHapticsEnabled)
             result = writeWithRetry(report, purpose: failedPurpose)
         }
 
@@ -1457,7 +1589,7 @@ public class ControllerManager: ObservableObject {
         lastHIDErrorLogged = true
     }
 
-    private func buildUSBOutputReport(r2: (mode: UInt8, params: [UInt8]), l2: (mode: UInt8, params: [UInt8]), ledR: UInt8, ledG: UInt8, ledB: UInt8, rumbleR: UInt8, rumbleL: UInt8, mic: UInt8, players: UInt8) -> [UInt8] {
+    private func buildUSBOutputReport(r2: (mode: UInt8, params: [UInt8]), l2: (mode: UInt8, params: [UInt8]), ledR: UInt8, ledG: UInt8, ledB: UInt8, rumbleR: UInt8, rumbleL: UInt8, mic: UInt8, players: UInt8, audio: ControllerAudioHIDState?, audioHapticsEnabled: Bool) -> [UInt8] {
         // macOS exposes IOHIDMaxOutputReportSize=48 for DualSense USB. Every used field
         // ends at byte 47, so sending Linux's padded 63-byte buffer violates the descriptor
         // for no benefit and can make IOHIDDeviceSetReport reject an otherwise valid packet.
@@ -1466,13 +1598,15 @@ public class ControllerManager: ObservableObject {
         // valid_flag0: compatible vibration + HAPTICS_SELECT + R2/L2 trigger motors.
         // Linux explicitly describes HAPTICS_SELECT as "Select classic rumble style haptics
         // and enable it." Removing bit 1 caused the confirmed USB rumble regression.
-        report[1] = 0x01 | 0x02 | 0x04 | 0x08
+        // Bit 1 selects classic rumble instead of PCM haptics. Clear it only while a
+        // USB audio-haptics stream is active; bit 0 performs the graceful handoff.
+        report[1] = 0x01 | (audioHapticsEnabled ? 0x00 : 0x02) | 0x04 | 0x08
         // valid_flag1: bit 0 = mic LED, bit 2 = lightbar RGB, bit 4 = player LEDs.
         report[2] = 0x01 | 0x04 | 0x10
 
         // Rumble motors (bytes 3-4)
-        report[3] = rumbleR
-        report[4] = rumbleL
+        report[3] = audioHapticsEnabled ? 0 : rumbleR
+        report[4] = audioHapticsEnabled ? 0 : rumbleL
 
         // Mic LED (byte 9): 0x00 = off, 0x01 = on, 0x02 = pulse
         report[9] = mic
@@ -1489,12 +1623,31 @@ public class ControllerManager: ObservableObject {
 
         // valid_flag2: COMPATIBLE_VIBRATION2. LED setup is intentionally absent here:
         // firmware requires it as a separate one-time report before normal LED state.
-        report[39] = 0x04
+        report[39] = audioHapticsEnabled ? 0x00 : 0x04
         // Player indicator LEDs (byte 44)
         report[44] = players
         report[45] = ledR
         report[46] = ledG
         report[47] = ledB
+
+        if let audio = audio {
+            // valid_flag0 audio bits: headphone volume, speaker volume, microphone
+            // volume, and route control. Existing rumble/trigger flags remain set.
+            report[1] |= 0x10 | 0x20 | 0x40 | 0x80
+            // Power-save control lets an explicit zero clear a previous microphone mute.
+            // Audio-control2 enables the controller speaker pre-gain byte at offset 38.
+            report[2] |= 0x02 | 0x80
+
+            let headphone = max(0.0, min(1.0, audio.headphoneVolume))
+            let speaker = max(0.0, min(1.0, audio.speakerVolume))
+            let microphone = max(0.0, min(1.0, audio.microphoneVolume))
+            report[5] = UInt8(clamping: Int(round(headphone * 127.0)))
+            report[6] = UInt8(clamping: Int(round(speaker * 100.0)))
+            report[7] = UInt8(clamping: Int(round(microphone * 64.0)))
+            report[8] = audio.outputRoute.rawValue | audio.inputRoute.rawValue
+            report[10] = audio.microphoneMuted ? 0x10 : 0x00
+            report[38] = 0x02
+        }
 
         return report
     }
@@ -1591,8 +1744,9 @@ public class ControllerManager: ObservableObject {
 
         if isLedPulsing {
             // The breathing factor is computed from the wall clock each tick, so we just need
-            // to re-send on a cadence to animate it.
-            pulsingTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            // to re-send on a cadence to animate it. Ten updates/second is smooth for a slow
+            // light fade and halves the previous HID/CRC workload.
+            pulsingTimer = Timer.scheduledTimer(withTimeInterval: 0.10, repeats: true) { [weak self] _ in
                 self?.applyTriggerSettingsViaHID()
             }
         }

@@ -10,6 +10,8 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     public var controllerManager = ControllerManager()
     public var presetManager = PresetManager()
     public var udpListener = UDPListener()
+    public var controllerAudioService = ControllerAudioService()
+    public var systemAudioCaptureService = SystemAudioCaptureService()
     
     public func applicationDidFinishLaunching(_ notification: Notification) {
         GCController.shouldMonitorBackgroundEvents = true
@@ -174,7 +176,13 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return
         }
         
-        let contentView = ContentView(manager: controllerManager, presetManager: presetManager, udpListener: udpListener)
+        let contentView = ContentView(
+            manager: controllerManager,
+            presetManager: presetManager,
+            udpListener: udpListener,
+            controllerAudioService: controllerAudioService,
+            systemAudioCaptureService: systemAudioCaptureService
+        )
         
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 850, height: 550),
@@ -210,12 +218,25 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     public func windowDidDeminiaturize(_ notification: Notification) {
         controllerManager.isUIVisible = true
     }
+
+    public func windowDidChangeOcclusionState(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        // A window that is completely covered by a game/another app cannot display live
+        // controller updates. Stop its SwiftUI and sensor publishing until it is visible
+        // again; controller input, gestures and HID output continue in the background.
+        controllerManager.isUIVisible =
+            window.isVisible
+            && !window.isMiniaturized
+            && window.occlusionState.contains(.visible)
+    }
     
     @objc public func quitApp() {
         NSApplication.shared.terminate(nil)
     }
 
     public func applicationWillTerminate(_ notification: Notification) {
+        systemAudioCaptureService.stop()
+        controllerAudioService.stopTestTone()
         controllerManager.shutdown()
     }
 }

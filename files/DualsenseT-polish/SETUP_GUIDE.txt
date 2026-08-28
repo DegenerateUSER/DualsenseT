@@ -1,0 +1,142 @@
+# DualSenseT — Pre-Publish Checklist & Setup Guide
+
+Everything the agent generated + what you need to do manually.
+Follow in order — takes about 30–60 minutes total.
+
+---
+
+## STEP 1: Add all generated files to your repo
+
+Copy each file below into your local clone of DualsenseT, then commit and push.
+
+```
+LICENSE                                ← root of repo
+README.md                              ← replace your existing one
+CONTRIBUTING.md                        ← root of repo
+CHANGELOG.md                           ← root of repo
+SECURITY.md                            ← root of repo
+.github/ISSUE_TEMPLATE/bug_report.md  ← create this folder path
+.github/ISSUE_TEMPLATE/feature_request.md
+.github/workflows/ci.yml              ← create this folder path
+```
+
+Commands:
+```bash
+cd your/local/DualsenseT
+# paste all the files in
+git add .
+git commit -m "chore: add LICENSE, README polish, CONTRIBUTING, issue templates, CI"
+git push
+```
+
+---
+
+## STEP 2: Add screenshots to the README (MOST IMPORTANT)
+
+The README has a placeholder:
+  Assets/screenshot-dashboard.png
+
+Take screenshots of:
+1. The main Dashboard (any tab — Triggers or Live Map looks best)
+2. The Menu Bar icon showing battery status
+3. The 3D Sensor card rotating
+
+Add them to your Assets/ folder and update the README image path.
+A screen recording GIF of the Live Map or 3D sensor card would go viral.
+Tools: macOS built-in Screenshot.app (Cmd+Shift+5) or Gifox for GIFs.
+
+---
+
+## STEP 3: Set up the GitHub repo settings (2 minutes)
+
+Go to https://github.com/DegenerateUSER/DualsenseT → Settings (gear icon top right of repo page, NOT your account settings)
+
+a) DESCRIPTION — click the gear next to "About" on the right sidebar:
+   Description: "Free, native macOS utility for PS5 DualSense adaptive triggers, LED, sensors & UDP emulation"
+   Website: (leave blank for now or add a future landing page)
+   Topics: add these tags:
+     macos swift dualsense ps5 gamecontroller adaptive-triggers hid iokit swiftui
+
+b) FEATURES — in the same Settings → General:
+   ✅ Check "Issues"
+   ✅ Check "Discussions" (turn this ON — great for community Q&A)
+   ✅ Check "Preserve this repository" (optional but nice)
+
+---
+
+## STEP 4: Create your first Release (v1.0.0)
+
+This is what makes the project feel "real" and lets people download a .app without building.
+
+Option A — If you can build a .dmg or .zip of DualSenseT.app:
+  1. Build: ./build.sh
+  2. Zip the .app: zip -r DualSenseT-v1.0.0.zip DualSenseT.app
+  3. Go to GitHub → Releases → "Create a new release"
+  4. Tag: v1.0.0
+  5. Title: "DualSenseT v1.0.0 — Initial Release"
+  6. Upload the .zip as a release asset
+  7. Paste a description (copy from CHANGELOG.md)
+
+Option B — If you can't build a distributable yet:
+  Just create the release anyway with source code only.
+  People who want to try it can build with ./build.sh
+
+---
+
+## STEP 5: Verify GitHub Actions CI runs
+
+After pushing, go to:
+  https://github.com/DegenerateUSER/DualsenseT/actions
+
+You should see a "Build & Test" workflow triggered.
+If it fails (e.g. build.sh needs chmod or dependencies), fix and push again.
+If it passes, you'll get a green checkmark badge — add it to your README:
+
+  [![CI](https://github.com/DegenerateUSER/DualsenseT/actions/workflows/ci.yml/badge.svg)](https://github.com/DegenerateUSER/DualsenseT/actions/workflows/ci.yml)
+
+Add that line right below the other badges in README.md.
+
+---
+
+## STEP 6: Share it (do this last, after steps 1-5)
+
+Post in these places in this order:
+
+1. Reddit r/macgaming
+   Title: "I built a free, open-source macOS alternative to DualSenseM for PS5 DualSense — adaptive triggers, LED, gyro, UDP server for CrossOver/Wine games"
+
+2. Reddit r/PS5
+   Title: "Free macOS app for DualSense adaptive triggers — native Swift, no paid software needed"
+
+3. Reddit r/SteamDeck (CrossOver users)
+
+4. Hacker News "Show HN"
+   Title: "Show HN: DualSenseT – Free macOS utility for PS5 DualSense adaptive triggers"
+
+5. CrossOver / Whisky Discord servers
+
+---
+
+## WHAT THE AGENT GENERATED (summary)
+
+| File | What it does |
+|------|-------------|
+| LICENSE | MIT license — required for open source |
+| README.md | Polished readme with badges, feature table, usage, collapsible engineering sections |
+| CONTRIBUTING.md | Guide for bug reports, feature requests, PRs |
+| CHANGELOG.md | Version history starting with v1.0.0 |
+| SECURITY.md | Explains how to report vulnerabilities privately |
+| .github/ISSUE_TEMPLATE/bug_report.md | Structured bug report form on GitHub Issues |
+| .github/ISSUE_TEMPLATE/feature_request.md | Feature request form |
+| .github/workflows/ci.yml | GitHub Actions: auto-builds + runs tests on every push/PR |
+
+---
+
+## ONE THING YOU MUST DO MANUALLY
+
+Add a LICENSE. Without it, the project is technically "All Rights Reserved" by default
+even if it says open-source in the README. The generated LICENSE file fixes this.
+
+---
+
+Good luck — you built something genuinely useful. Ship it.

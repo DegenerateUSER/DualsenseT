@@ -2,7 +2,7 @@
 
 > **Purpose:** This file tracks what has been done, what is in progress, and what remains.  
 > If a session ends mid-task, the next session should read this file FIRST to resume seamlessly.  
-> **Last Updated:** 28/08/2026 15:40 IST
+> **Last Updated:** 28/08/2026 16:40 IST
 
 ---
 
@@ -12,7 +12,86 @@ User hardware retest confirms that adaptive triggers, haptics/rumble, lightbar, 
 player LEDs, sensors, and input now work over both Bluetooth and USB. The Live Map is also
 confirmed complete and functional. The BT `seq_tag` low-nibble fix, required HAPTICS_SELECT,
 two-report LED ownership sequence, and 48-byte USB report are now a known-good checkpoint.
-Test suite: **61/61 passing**.
+The high-rate input/UI path has since been optimized without changing HID output bytes.
+USB Controller Audio Phase 1 (hardware discovery + Quadraphonic setup) is complete.
+Test suite: **65/65 passing**.
+
+---
+
+## 🔊 Session: USB Controller Audio — Phase 1 (28/08/2026, 16:32 IST)
+
+**Physical hardware discovered through CoreAudio**
+- Output device ID `98`, four output channels, 48,000 Hz.
+- Input device ID `94`, two input channels, 48,000 Hz.
+- Both endpoints identify as `DualSense Wireless Controller` by Sony Interactive
+  Entertainment over USB.
+- Output UID and input UID are retained independently because macOS exposes them as separate
+  `AudioDeviceID`s.
+
+**Quadraphonic setup hardware-verified**
+- Initial layout tag was `0x00000000`; the preferred-layout property is writable.
+- A first set attempt using only `MemoryLayout<AudioChannelLayout>.size` correctly surfaced
+  CoreAudio error `kAudioHardwareBadPropertySizeError ('!siz')`.
+- Fixed by allocating and submitting the exact buffer size advertised by the device's
+  `kAudioDevicePropertyPreferredChannelLayout` property.
+- Reread succeeds as `kAudioChannelLayoutTag_Quadraphonic`, ordered:
+  Front L, Front R, Surround/Haptic L, Surround/Haptic R.
+
+**Implementation**
+- Added `ControllerAudioService.swift`: USB-only Sony/DualSense endpoint matching, device
+  IDs/UIDs, channel counts, sample rate, layout/readiness status, refresh, and safe
+  programmatic Quadraphonic configuration.
+- Added `ControllerAudioView.swift` and a new `Audio (USB)` sidebar tab showing the real
+  endpoint, output/input/sample-rate capabilities, four-channel map, status/errors, and
+  setup action.
+- Added CoreAudio + AudioToolbox to both production and test link commands.
+- Added two platform-independent discovery/readiness tests.
+- **65/65 tests pass; full app bundle builds and has been opened for UI verification.**
+
+**Next stage**
+- [ ] User verifies the new Audio (USB) tab shows 4 output / 2 input / 48 kHz / Quadraphonic.
+- [ ] Implement HID-backed speaker/headset/microphone routing and volume controls.
+- [ ] Add safe per-channel test tones before system-audio capture.
+- [ ] Implement permission-aware system/process audio capture and real-time haptic DSP.
+
+---
+
+## ⚙️ Session: Runtime CPU Reduction (28/08/2026, 16:09 IST)
+
+**Why CPU was high**
+- DualSense Bluetooth reports arrive at roughly hundreds of samples per second. Every report
+  was decoded, enqueued to the main thread, and expanded into many separate `@Published`
+  writes (one per button plus sticks, triggers, touches and unchanged battery state).
+- Those writes repeatedly invalidated the SwiftUI view tree faster than the display could
+  render. USB analog noise and 250 Hz motion callbacks created similar unnecessary updates.
+- Optional lightbar breathing sent 20 full HID reports/CRC calculations per second.
+- The hidapi reader itself correctly blocks on a condition variable; there was no busy-spin.
+
+**Changes**
+- Bluetooth input is still drained continuously, but decode/main-thread delivery is capped
+  at 60 Hz.
+- BT button state is published as one dictionary snapshot; all controller values are only
+  published when they actually change. One-count stick jitter is filtered.
+- Hidden UI no longer publishes sticks/buttons/triggers/touch visuals; background touchpad
+  gesture recognition and hardware output remain active.
+- Motion fusion retains high-rate samples for accuracy, but attitude rendering is capped at
+  60 Hz and periodic file logging reduced fivefold.
+- Fully occluded windows now pause live UI/sensor publishing until visible again.
+- Lightbar breathing cadence reduced from 20 Hz to 10 Hz.
+- No trigger/LED/rumble report layout, Bluetooth sequence/CRC, or LED ownership byte changed.
+
+**Regression coverage**
+- Added `testBTInputDeliveryIsCappedAtDisplayRate`.
+- Added `testAnalogNoiseDoesNotPublishVisualChange`.
+- **63/63 tests passing.** Full packaged app build succeeds.
+
+**Runtime verification still needed**
+- [x] No-controller dashboard baseline sampled after launch: 0.0–0.7% CPU across five
+      one-second samples (not representative of an active USB/BT report stream).
+- [ ] Compare Activity Monitor CPU over USB and BT with Live Map open, Sensors open, and
+      dashboard closed to the menu bar.
+- [ ] Confirm very fast button taps and touchpad swipes remain responsive at the 60 Hz UI cap.
+- [ ] Confirm 10 Hz lightbar breathing still looks smooth on hardware.
 
 ---
 
@@ -31,6 +110,11 @@ unavailable over Bluetooth. The exclusive raw-HID path now demonstrably supports
 **Checkpoint rule:** Preserve the current HID builders and connection lifecycle as the
 known-good hardware baseline. Future Live Map improvements must be visual-only and must not
 alter `ControllerManager` output report bytes, Bluetooth sequencing/CRC, or HID ownership.
+
+**Git checkpoint:** `603384f` (`checkpoint hardware-verified controller support`) captures
+the complete hardware-working state plus the removal of the obsolete Bluetooth warning.
+The later Live Map polish and CPU optimizations remain after that checkpoint and do not alter
+the verified HID output report builders, Bluetooth sequence/CRC, or LED ownership sequence.
 
 ---
 

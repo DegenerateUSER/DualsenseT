@@ -13,6 +13,29 @@ import CoreGraphics
 /// longer reliably deliver input for it either, so this class also reads and parses
 /// raw 0x31 input reports itself.
 public final class BluetoothHIDController {
+    /// The controller can emit input reports at roughly 250 Hz. Rendering every packet
+    /// overloads the main thread and SwiftUI without making a 60 Hz display look smoother.
+    /// We still drain hidapi at full speed, but decode/deliver at most once per display frame.
+    private static let inputDeliveryIntervalNanoseconds: UInt64 = 16_666_667
+
+    private static func shouldDeliverInput(now: UInt64, lastDelivery: inout UInt64) -> Bool {
+        guard lastDelivery == 0
+                || now &- lastDelivery >= inputDeliveryIntervalNanoseconds else {
+            return false
+        }
+        lastDelivery = now
+        return true
+    }
+
+    #if TESTING
+    public static var testInputDeliveryIntervalNanoseconds: UInt64 {
+        inputDeliveryIntervalNanoseconds
+    }
+
+    public static func testShouldDeliverInput(now: UInt64, lastDelivery: inout UInt64) -> Bool {
+        shouldDeliverInput(now: now, lastDelivery: &lastDelivery)
+    }
+    #endif
 
     public struct InputSample {
         public var buttons: [String: Bool]
@@ -190,6 +213,7 @@ public final class BluetoothHIDController {
         let reportSize = 78
         var buf = [UInt8](repeating: 0, count: reportSize)
         var consecutiveFailures = 0
+        var lastInputDeliveryTime: UInt64 = 0
 
         while !shouldStopReading {
             deviceLock.lock()
@@ -212,7 +236,10 @@ public final class BluetoothHIDController {
             consecutiveFailures = 0
             if n == 0 { continue } // timed out, no report available
 
-            if Int(n) == reportSize, buf[0] == 0x31, let sample = Self.parseInputReport(buf) {
+            let now = DispatchTime.now().uptimeNanoseconds
+            if Int(n) == reportSize, buf[0] == 0x31,
+               Self.shouldDeliverInput(now: now, lastDelivery: &lastInputDeliveryTime),
+               let sample = Self.parseInputReport(buf) {
                 let handler = onInput
                 DispatchQueue.main.async { handler?(sample) }
             }

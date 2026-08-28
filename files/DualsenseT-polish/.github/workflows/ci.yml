@@ -1,0 +1,24 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Make build script executable
+        run: chmod +x build.sh
+
+      - name: Build
+        run: ./build.sh
+
+      - name: Run Tests
+        run: ./build.sh test
