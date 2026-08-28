@@ -13,11 +13,12 @@ The application operates in a dual mode: as a lightweight system **Menu Bar Help
    * [Left Trigger (L2) & Right Trigger (R2)](#1-left-trigger-l2--right-trigger-r2)
    * [Lightbar](#2-lightbar)
    * [Haptics (Rumble, Mic LED, Player LEDs)](#3-haptics)
-   * [Live Map (Visualizer)](#4-live-map-visualizer)
-   * [Sensors (Gyroscope & Accelerometer)](#5-sensors-gyroscope--accelerometer)
-   * [UDP Server](#6-udp-server)
-   * [Presets](#7-presets)
-   * [Settings (Touchpad Gestures & Profiles)](#8-settings)
+   * [Controller Audio & Audio Haptics](#4-controller-audio--audio-haptics-usb-only)
+   * [Live Map (Visualizer)](#5-live-map-visualizer)
+   * [Sensors (Gyroscope & Accelerometer)](#6-sensors-gyroscope--accelerometer)
+   * [UDP Server](#7-udp-server)
+   * [Presets](#8-presets)
+   * [Settings (Touchpad Gestures & Profiles)](#9-settings)
 4. [Advanced Engineering Features](#advanced-engineering-features)
    * [Adaptive IMU Complementary Filter](#adaptive-imu-complementary-filter)
    * [Runtime CPU Optimization](#runtime-cpu-optimization)
@@ -115,7 +116,28 @@ A dedicated tab for **rumble motors**, **microphone LED**, and **player indicato
 
 ---
 
-### 4. Live Map (Visualizer)
+### 4. Controller Audio & Audio Haptics (USB Only)
+The Audio tab uses the DualSense USB Audio Class interface. Bluetooth does not expose audio.
+
+* **Hardware Discovery:** Detects the separate Sony four-channel output and two-channel
+  microphone endpoints at 48 kHz.
+* **Automatic Quadraphonic Setup:** Configures Front L/R plus Haptic L/R without changing
+  the Mac's default output device.
+* **Controller Audio Controls:** Headset/controller-speaker routing, microphone source,
+  independent headset/speaker/microphone levels, and hardware microphone mute.
+* **Channel Tests:** Direct Front L/R audible tones and independent Haptic L/R actuator tests.
+* **System Audio Capture:** Uses the standard macOS Screen & System Audio Recording
+  permission and shows a live input meter.
+* **Audio Haptics:** Extracts bass/transients from game, music, or video audio and streams
+  stereo feedback to the two grip actuators while normal Mac audio continues unchanged.
+
+Hardware verified: Quadraphonic setup, both haptic channels, controller speaker, controller
+microphone, capture meter, and video-driven haptics. Wired headset testing and the latest
+adaptive-trigger coexistence fix remain pending. See `USB_AUDIO_HAPTICS.md`.
+
+---
+
+### 5. Live Map (Visualizer)
 Provides a real-time vector schematic of the controller to diagnose inputs.
 * **Button Highlights:** Pressing buttons (Cross, Circle, Square, Triangle, L1, R1, Options, Create, PS) highlights the corresponding key in blue.
 * **Joystick Tracking:** Left/right analog caps move proportionally on the controller schematic, with L3/R3 press feedback.
@@ -123,7 +145,7 @@ Provides a real-time vector schematic of the controller to diagnose inputs.
 
 ---
 
-### 5. Sensors (Gyroscope & Accelerometer)
+### 6. Sensors (Gyroscope & Accelerometer)
 Provides 3D spatial diagnostics of the controller's motion.
 * **3D Glowing Card:** A rendered 3D rectangle that rotates in real-time to match the pitch, roll, and yaw of your physical controller.
 * **Attitude Quaternion:** Displays the mathematically computed quaternion coordinates (`w`, `x`, `y`, `z`) in real-time.
@@ -131,7 +153,7 @@ Provides 3D spatial diagnostics of the controller's motion.
 
 ---
 
-### 6. UDP Server
+### 7. UDP Server
 Emulates the **DualSenseX UDP Server protocol** on port `6969`.
 * **Purpose:** Allows games running inside Wine, CrossOver, Game Porting Toolkit, or native game mods (e.g. Cyberpunk 2077, Spider-Man) to send JSON instructions directly to your controller triggers and LEDs.
 * **Extended Protocol:** Maps all 19 DSX trigger types (Normal, Custom, GameCube, Resistance, Bow, Galloping, SemiAutomaticGun, AutomaticGun, Machine, Choppy, VerySoft through Hardest, Rigid, VibrateTriggerPulse, VibrateTrigger) to the closest native DualSenseT trigger mode for maximum fidelity.
@@ -139,7 +161,7 @@ Emulates the **DualSenseX UDP Server protocol** on port `6969`.
 
 ---
 
-### 7. Presets
+### 8. Presets
 Manage custom profiles.
 * **12 Default Presets:** *Bow & Arrow*, *Heavy Rifle*, *Racing Brake*, *Soft Click*, *Galloping*, *Machine Gun*, *Heavy Spring*, *Semi-Auto Pistol*, *Automatic Rifle*, *Bumpy Road*, *Slope Brake*, and *Off*.
 * **Save Current Preset:** Save your active L2/R2 trigger settings, LED color, and haptic pulsing configurations into a named preset.
@@ -147,7 +169,7 @@ Manage custom profiles.
 
 ---
 
-### 8. Settings
+### 9. Settings
 Advanced remapping and background automation.
 
 #### Per-App Profiles:

@@ -59,8 +59,12 @@ public struct ControllerAudioView: View {
             service.refresh()
         }
         .onDisappear {
-            stopChannelTest()
-            stopAudioHaptics()
+            // Audio haptics are an app-wide background feature, not an Audio-tab preview.
+            // Navigating to configure triggers must not tear down capture/DSP or restore
+            // classic rumble mode. Only a short isolated channel test is tab-scoped.
+            if service.isPlayingTestTone || hapticsStartWorkItem != nil {
+                stopChannelTest()
+            }
         }
     }
 

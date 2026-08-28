@@ -4,9 +4,9 @@ The E2E test suite for DualSenseT is fully implemented, verified, and ready.
 
 ## Readiness Checklist
 - [x] **Test suite integration**: All tests are integrated into `Tests/Tests.swift` and compile/run via the standard `./build.sh test` command.
-- [x] **Test count**: 65 test cases (exceeding the minimum requirement of 38 cases).
-- [x] **Feature Coverage**: Verifies input visualizer mapping, app background transitions, USB/BT output flags and exact report sizes, dedicated LED-control setup packets, rumble/mic/player/RGB bytes, Bluetooth sequence/CRC32, trigger-effect encoding, Bluetooth 0x31 input parsing, 60 Hz input delivery, analog-noise suppression, and DualSense USB CoreAudio/Quadraphonic readiness.
-- [x] **Verification**: All 65 tests compiled and executed cleanly with 100% pass status.
+- [x] **Test count**: 70 test cases (exceeding the minimum requirement of 38 cases).
+- [x] **Feature Coverage**: Verifies input visualizer mapping, app background transitions, USB/BT output reports, Bluetooth input, CPU guardrails, DualSense CoreAudio discovery/Quadraphonic readiness, USB audio control bytes, PCM/classic-rumble switching, system-audio metering, and adaptive-trigger coexistence state.
+- [x] **Verification**: All 70 tests compiled and executed cleanly with 100% pass status.
 
 ## How to Execute Tests
 Run:
@@ -15,6 +15,6 @@ Run:
 ```
 
 ## Summary
-- **Total Mapped Test Cases**: 65
-- **Pass Status**: 🟢 PASSING (65 / 65 passed)
-- **Last Verification Timestamp**: 28/08/2026 16:39:00 IST (USB audio discovery verified against the connected physical controller: separate 4-output/2-input CoreAudio endpoints at 48 kHz; programmatic Quadraphonic configuration succeeds)
+- **Total Mapped Test Cases**: 70
+- **Pass Status**: 🟢 PASSING (70 / 70 passed)
+- **Last Verification Timestamp**: 28/08/2026 18:05:00 IST (speaker, microphone, isolated PCM actuators, system-audio meter, and streamed video haptics hardware-confirmed; trigger+audio coexistence lifecycle fix passes automated tests and awaits physical retest)

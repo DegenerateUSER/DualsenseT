@@ -2,7 +2,7 @@
 
 > **Purpose:** This file tracks what has been done, what is in progress, and what remains.  
 > If a session ends mid-task, the next session should read this file FIRST to resume seamlessly.  
-> **Last Updated:** 28/08/2026 16:40 IST
+> **Last Updated:** 28/08/2026 18:12 IST
 
 ---
 
@@ -13,8 +13,10 @@ player LEDs, sensors, and input now work over both Bluetooth and USB. The Live M
 confirmed complete and functional. The BT `seq_tag` low-nibble fix, required HAPTICS_SELECT,
 two-report LED ownership sequence, and 48-byte USB report are now a known-good checkpoint.
 The high-rate input/UI path has since been optimized without changing HID output bytes.
-USB Controller Audio Phase 1 (hardware discovery + Quadraphonic setup) is complete.
-Test suite: **65/65 passing**.
+USB controller audio controls, system-audio capture, and audio-to-haptics streaming are now
+implemented. Speaker, microphone, isolated haptic channels, capture meter, and streamed video
+haptics worked on physical hardware. The tab-switch/adaptive-trigger coexistence fix is
+implemented but deferred for user retest. Test suite: **70/70 passing**.
 
 ---
 
@@ -49,10 +51,75 @@ Test suite: **65/65 passing**.
 - **65/65 tests pass; full app bundle builds and has been opened for UI verification.**
 
 **Next stage**
-- [ ] User verifies the new Audio (USB) tab shows 4 output / 2 input / 48 kHz / Quadraphonic.
-- [ ] Implement HID-backed speaker/headset/microphone routing and volume controls.
-- [ ] Add safe per-channel test tones before system-audio capture.
-- [ ] Implement permission-aware system/process audio capture and real-time haptic DSP.
+- [x] User verified 4 output / 2 input / 48 kHz / Quadraphonic.
+- [x] HID-backed speaker/headset/microphone routing and volume controls implemented.
+- [x] Safe per-channel test tones implemented; speaker + channels 3/4 verified.
+- [x] Permission-aware system capture and real-time haptic DSP implemented.
+- [ ] Wired headset verification (no headset available).
+- [ ] Retest simultaneous adaptive triggers + audio haptics after lifecycle fix.
+
+---
+
+## 🔊 Session: USB Audio Controls & Audio Haptics (28/08/2026, 16:40–18:07 IST)
+
+> Full technical implementation, byte map, failure chronology, hardware evidence, retest
+> checklist, risks, and resume instructions: **`USB_AUDIO_HAPTICS.md`**
+
+### Implemented
+
+- Added USB-only HID controls for headset/controller-speaker routes, microphone source,
+  headset/speaker/microphone volume, hardware microphone mute, and speaker pre-gain.
+- Added direct four-channel AVAudioEngine tests:
+  - channels 1/2: quiet 440 Hz audible tones;
+  - channels 3/4: 120 Hz left/right haptic actuator tones.
+- Added ScreenCaptureKit system/game audio capture at 48 kHz stereo with standard macOS
+  Screen & System Audio Recording permission and a live level meter.
+- Added audio-to-haptics DSP: approximate 20–220 Hz band extraction, adjustable gain,
+  limiter, stereo L/R actuator mapping, silent audible output channels, and bounded buffer
+  scheduling.
+- Added app-global audio services owned by `AppDelegate`, with termination cleanup.
+- Added USB PCM/classic-rumble switching while retaining adaptive-trigger enable bits.
+
+### Hardware-Verified
+
+- [x] CoreAudio 4-out / 2-in / 48 kHz discovery.
+- [x] Programmatic Quadraphonic layout.
+- [x] Left and right isolated PCM haptic actuator tests.
+- [x] Controller speaker.
+- [x] Controller microphone source/gain/mute.
+- [x] ScreenCaptureKit meter follows video audio.
+- [x] Video/system audio produces controller haptic vibration.
+- [ ] Wired 3.5 mm headset (hardware unavailable).
+
+### Failures and Corrections
+
+1. **Quadraphonic set failed with `'!siz'`:** AppleUSBAudio required the exact property
+   buffer size, not `MemoryLayout<AudioChannelLayout>.size`. Fixed using the size returned
+   by CoreAudio; hardware reread succeeded.
+2. **Channel-test tile confusion:** the prominent upper tiles were informational; actual
+   buttons were below the fold. User found the lower controls. UI consolidation remains.
+3. **Four-channel stream ran but actuators were silent:** USB report bit 1 selected
+   `USE_RUMBLE_NO_HAPTICS`. Added scoped PCM mode (`0x0D`, classic motors zero, improved
+   rumble off) and automatic restore to `0x0F`; physical haptic tests then worked.
+4. **Audio haptics stopped after navigating to Trigger tabs:** `onDisappear` stopped the
+   capture/output engines and restored classic rumble. Fixed by keeping streaming app-global;
+   only temporary test tones stop on tab change.
+5. **Turning triggers off did not restore haptics:** expected consequence of failure 4—the
+   PCM engine had been torn down. Trigger settings themselves were not the conflict.
+
+### Paused Awaiting Retest
+
+- [ ] Start Audio Haptics, then change L2/R2 modes; both effects must continue together.
+- [ ] Return to Audio tab; stream must still show running.
+- [ ] Stop Audio Haptics; Test Pulse/Heartbeat classic rumble must work again.
+- [ ] Verify intensity range, 10-minute stability, CPU, latency, and reconnect behavior.
+- [ ] Verify wired headset when available.
+
+### Verification
+
+- Seven audio-specific regression tests added.
+- **70/70 tests passing.**
+- Full app bundle builds successfully.
 
 ---
 
@@ -390,20 +457,27 @@ params[9]   = 0x00
 | Phase 0 | Fix BT Background Settings Persistence | ✅ Bug fixed |
 | Phase 1 | Mic LED + Player LEDs + Rumble Motor Test | ✅ DONE |
 | Phase 2 | Expand Trigger Modes (4 → 11) + Presets + UDP | ✅ Bug fixed |
-| Phase 3 | USB Audio Routing | ⏸ Deferred |
+| Phase 3 | USB Audio controls + system-audio haptics | 🟡 Implemented/core HW verified — coexistence retest pending |
 | Phase 4 | README + Comparison Table Update | ✅ DONE |
 | Phase 5 | Raw-HID Bluetooth via vendored hidapi (output + input over BT) | ✅ Implemented |
 | Phase 6 | Pre-BT-feature repo audit (10 fixes, 57/57 tests) | ✅ DONE — awaiting HW verify |
 | Phase 7 | Initial output-report/Live Map attempt | ⚠️ Partially superseded |
-| Phase 8 | Driver-matching LED handshake, haptics restore, 48-byte USB reports, render-spill fix | ✅ Implemented — awaiting HW retest |
+| Phase 8 | Driver-matching LED handshake, haptics restore, 48-byte USB reports, render-spill fix | ✅ Hardware-verified |
 
 ---
 
 ## Remaining Work
 
-### Phase 3 — USB Audio Routing (Deferred)
-- [ ] CoreAudio aggregate device creation
-- [ ] Audio routing tab UI
+### Phase 3 — USB Audio & Audio Haptics
+- [x] CoreAudio USB endpoint discovery
+- [x] Programmatic Quadraphonic layout
+- [x] Audio routing/volume/mute tab
+- [x] Per-channel speaker/haptic tests
+- [x] Permission-aware system audio capture + meter
+- [x] System audio → haptic DSP/output
+- [ ] Hardware-retest trigger coexistence after tab-lifecycle fix
+- [ ] Wired headset test
+- [ ] Reconnect/long-run/CPU/latency hardening
 
 ### Bluetooth Hardware Verification (NEXT)
 - [x] BT L2/R2 adaptive-trigger modes (hardware-confirmed 28/08/2026)
@@ -429,3 +503,11 @@ params[9]   = 0x00
 | `ControllerManager.swift` (28/08 PM) | BT seq_tag low nibble 0 (hardware-confirmed trigger fix); restored required HAPTICS_SELECT; one-time dedicated LIGHT_OUT LED-control handshake followed by separate state reports; USB report length 48; per-transport reconnect reset; TESTING captures use production builders |
 | `ControllerVisualizerView.swift` (28/08 PM) | Live Map rebuilt; fixed full-canvas touchpad gradient spill that covered the right/lower shell by locally framing the touchpad; removed center blue wedge; player LEDs from `playerLEDs` bitmask |
 | `Tests/Tests.swift` (28/08 PM) | BT seq-tag invariant plus exact USB/BT state flags, haptics bytes, LED setup separation, report lengths, and CRC coverage (61 tests total) |
+| `ControllerAudioService.swift` (28/08 audio) | DualSense CoreAudio discovery; Quadraphonic setup; HID audio models; isolated 4-channel tests; AVAudioEngine audio-haptics DSP/output |
+| `SystemAudioCaptureService.swift` (28/08 audio) | Permission-aware ScreenCaptureKit system audio capture, live meter, and synchronous PCM consumer |
+| `ControllerAudioView.swift` (28/08 audio) | Audio tab diagnostics, channel map/tests, routes, volumes, microphone, capture meter, haptic intensity/start/stop, tab-persistent stream lifecycle |
+| `ControllerManager.swift` (28/08 audio) | USB audio HID bytes plus scoped `audioHapticsModeEnabled` switch that preserves trigger effects and restores classic rumble |
+| `ContentView.swift` / `AppDelegate.swift` (28/08 audio) | Audio tab and long-lived CoreAudio/capture service ownership with termination cleanup |
+| `build.sh` (28/08 audio) | Links CoreAudio, AudioToolbox, AVFAudio, ScreenCaptureKit, CoreMedia; adds audio capture permission descriptions |
+| `Tests/Tests.swift` (28/08 audio) | Seven audio regressions; total suite now 70 |
+| `USB_AUDIO_HAPTICS.md` | Complete implementation/failure/hardware/retest/resume reference |

@@ -1012,6 +1012,23 @@ class TestSuite {
             try XCTAssertEqual(restoredReport[39], 0x04)
         }
 
+        runTest(name: "testAudioHapticsModePersistsAcrossTriggerChanges") {
+            let manager = ControllerManager()
+            manager.mockHIDMode = true
+            manager.mockHIDTransport = "USB"
+            manager.audioHapticsModeEnabled = true
+
+            manager.r2Mode = .weapon
+            manager.applyTriggerSettingsViaHID()
+            try XCTAssertEqual(manager.capturedUSBReport?[1], 0x0D)
+            try XCTAssertEqual(manager.capturedUSBReport?[11], 0x25)
+
+            manager.r2Mode = .feedback
+            manager.applyTriggerSettingsViaHID()
+            try XCTAssertEqual(manager.capturedUSBReport?[1], 0x0D)
+            try XCTAssertEqual(manager.capturedUSBReport?[11], 0x21)
+        }
+
         runTest(name: "testSystemAudioMeterNormalization") {
             try XCTAssertEqual(SystemAudioCaptureService.meterLevel(forRMS: -0.1), 0)
             try XCTAssertEqual(SystemAudioCaptureService.meterLevel(forRMS: 0.1), 0.4)
