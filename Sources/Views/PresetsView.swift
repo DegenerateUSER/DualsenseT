@@ -29,6 +29,9 @@ public struct PresetsView: View {
                         
                         Button("Save") {
                             guard !newPresetName.isEmpty else { return }
+                            // Read RGB via an sRGB conversion — accessing redComponent on a
+                            // non-RGB NSColor (e.g. a catalog colour) would trap.
+                            let rgb = manager.ledColor.usingColorSpace(.sRGB) ?? manager.ledColor
                             let newPreset = TriggerPreset(
                                 name: newPresetName,
                                 l2Mode: manager.l2Mode,
@@ -43,10 +46,12 @@ public struct PresetsView: View {
                                 r2Strength: manager.r2Strength,
                                 r2Amplitude: manager.r2Amplitude,
                                 r2Frequency: manager.r2Frequency,
-                                ledRed: Float(manager.ledColor.redComponent),
-                                ledGreen: Float(manager.ledColor.greenComponent),
-                                ledBlue: Float(manager.ledColor.blueComponent),
-                                isLedPulsing: manager.isLedPulsing
+                                ledRed: Float(rgb.redComponent),
+                                ledGreen: Float(rgb.greenComponent),
+                                ledBlue: Float(rgb.blueComponent),
+                                isLedPulsing: manager.isLedPulsing,
+                                l2EndStrength: manager.l2EndStrength,
+                                r2EndStrength: manager.r2EndStrength
                             )
                             presetManager.savePreset(preset: newPreset)
                             newPresetName = ""

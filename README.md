@@ -12,11 +12,12 @@ The application operates in a dual mode: as a lightweight system **Menu Bar Help
 3. [Tab-by-Tab Dashboard Guide](#tab-by-tab-dashboard-guide)
    * [Left Trigger (L2) & Right Trigger (R2)](#1-left-trigger-l2--right-trigger-r2)
    * [Lightbar](#2-lightbar)
-   * [Live Map (Visualizer)](#3-live-map-visualizer)
-   * [Sensors (Gyroscope & Accelerometer)](#4-sensors-gyroscope--accelerometer)
-   * [UDP Server](#5-udp-server)
-   * [Presets](#6-presets)
-   * [Settings (Touchpad Gestures & Profiles)](#7-settings)
+   * [Haptics (Rumble, Mic LED, Player LEDs)](#3-haptics)
+   * [Live Map (Visualizer)](#4-live-map-visualizer)
+   * [Sensors (Gyroscope & Accelerometer)](#5-sensors-gyroscope--accelerometer)
+   * [UDP Server](#6-udp-server)
+   * [Presets](#7-presets)
+   * [Settings (Touchpad Gestures & Profiles)](#8-settings)
 4. [Advanced Engineering Features](#advanced-engineering-features)
    * [Adaptive IMU Complementary Filter](#adaptive-imu-complementary-filter)
    * [Zero-CPU Idle Optimization](#zero-cpu-idle-optimization)
@@ -30,8 +31,8 @@ The application operates in a dual mode: as a lightweight system **Menu Bar Help
 * **Operating System:** macOS 13.0 (Ventura) or newer.
 * **Supported Hardware:** PlayStation 5 DualSense Controller (CFI-ZCT1W) or DualSense Edge Controller (CFI-ZCP1).
 * **Connection Type:**
-  * **Bluetooth (Wireless):** Supported for all features (Adaptive Triggers, LED Lightbar, Touchpad, Gyro/Accel) via Apple's GameController framework combined with raw HID overrides.
-  * **USB (Wired):** Plugs in plug-and-play. Ensures lowest possible latency.
+  * **Bluetooth (Wireless):** Supported for all features (Adaptive Triggers, LED Lightbar, Rumble, Mic LED, Touchpad, Gyro/Accel) via Apple's GameController framework combined with raw HID overrides.
+  * **USB (Wired):** Plug-and-play. Ensures lowest possible latency.
 
 ---
 
@@ -40,7 +41,7 @@ The application operates in a dual mode: as a lightweight system **Menu Bar Help
 ### 1. Menu Bar Helper
 On launch, DualSenseT runs as a status item in the macOS Menu Bar. 
 * **Live Status:** Displays connection type and battery percentage (e.g. `[BT] 85%` or `[USB] 100%`).
-* **Quick Action Presets:** Click the menu icon to switch between default presets (e.g. Bow & Arrow, Heavy Rifle, Racing Brake) instantly without opening the dashboard.
+* **Quick Action Presets:** Click the menu icon to switch between default presets (e.g. Bow & Arrow, Heavy Rifle, Racing Brake, Machine Gun, Semi-Auto Pistol, and more) instantly without opening the dashboard.
 * **Window Controls:** Open the main configuration dashboard or quit the app cleanly.
 
 ### 2. Main Dashboard Window
@@ -51,24 +52,36 @@ A clean, premium, semi-transparent SwiftUI dashboard. You can close the main das
 ## Tab-by-Tab Dashboard Guide
 
 ### 1. Left Trigger (L2) & Right Trigger (R2)
-These tabs let you configure Sony's physical **Adaptive Triggers** to simulate different mechanical behaviors.
+These tabs let you configure Sony's physical **Adaptive Triggers** to simulate different mechanical behaviors. DualSenseT supports **11 trigger modes** — more than any other macOS controller utility.
 
-#### Mode Definitions:
+#### Basic Modes:
 * **Off (Default):** Normal trigger pull. No added resistance or haptic feedback.
-* **Feedback:** Simulates pulling against a stiff spring. 
-  * **Start Position (0.0 - 1.0):** The physical pull distance where the resistance begins.
-  * **Strength (0.0 - 1.0):** The stiffness of the simulated spring force.
-* **Weapon:** Simulates the trigger of a firearm (resistance builds up to a gate, then snaps).
-  * **Start Position (0.0 - 1.0):** The pull distance where resistance begins.
-  * **End Position (0.0 - 1.0):** The trigger breakthrough threshold.
-  * **Strength (0.0 - 1.0):** Force needed to "break through" the threshold.
-* **Vibration:** Simulates a haptic vibration buzzing against your finger.
-  * **Start Position (0.0 - 1.0):** The pull distance where vibration starts.
-  * **Amplitude (0.0 - 1.0):** The strength of the vibration buzz.
-  * **Frequency (0.0 - 1.0):** Speed of haptic pulses (cycles per second).
+* **Feedback:** Continuous resistance from a configurable start position onward.
+  * *Start Position, Strength*
+* **Weapon:** Resistance zone between start and end — simulates a firearm trigger pull.
+  * *Start Position, End Position, Strength*
+* **Vibration:** Haptic vibration buzzing against your finger.
+  * *Start Position, Amplitude, Frequency*
+
+#### Advanced Modes:
+* **Section Resistance:** Resistance only within the start-end zone — no effect outside that range.
+  * *Start Position, End Position, Strength*
+* **Semi-Automatic:** Resistance between start and end positions, snaps back when released past end. Simulates a semi-auto firearm.
+  * *Start Position, End Position, Strength*
+* **Automatic:** Continuous full-pull resistance with a repeating cycle effect.
+  * *Start Position, Strength, Effect Frequency*
+
+#### Expert Modes:
+* **Slope Feedback:** Gradually increasing resistance from a start strength to an end strength across the trigger travel. Perfect for realistic brake simulation.
+  * *Start Position, End Position, Start Strength, End Strength*
+* **Multi-Position Feedback:** Alternating strong/weak resistance zones for a bumpy, textured resistance feel.
+  * *Start Position, Strength*
+* **Multi-Position Vibration:** Alternating vibration intensities for a textured vibration pattern.
+  * *Start Position, Amplitude, Frequency*
+* **Full Press:** Maximum resistance across the entire trigger travel. No parameters needed.
 
 #### Visual Preview & Test Gauge:
-* **Live Spring-Loaded Preview Bar:** Displays a simulated haptic bar showing trigger state, weapon snap thresholds, and active vibrations.
+* **Live Spring-Loaded Preview Bar:** Displays a simulated haptic bar showing trigger state, mode-specific active zones, and vibration effects with per-mode color coding.
 * **Physical Pull Gauge:** A blue bar showing the real-time physical position of your finger on the controller trigger.
 
 ---
@@ -81,7 +94,28 @@ Allows customizing the LED lightbar wrapping around the touchpad.
 
 ---
 
-### 3. Live Map (Visualizer)
+### 3. Haptics
+A dedicated tab for **rumble motors**, **microphone LED**, and **player indicator LEDs** — all controlled via raw HID reports.
+
+#### Rumble Motor Test:
+* **Left & Right Motor Sliders:** Independently control the intensity (0-100%) of each rumble motor.
+* **Quick Actions:**
+  * **Test Pulse:** Smooth ramp-up/ramp-down intensity pattern.
+  * **Heartbeat:** Two quick pulses followed by a pause — mimics a heartbeat.
+  * **Max Power:** Sets both motors to 100%.
+  * **Stop All:** Immediately silences both motors.
+
+#### Microphone LED:
+* **Off / On / Pulse:** Controls the orange mute indicator LED next to the microphone. Useful for visual status indicators.
+
+#### Player Indicator LEDs:
+* **5-LED Toggle Grid:** Individually toggle each of the 5 indicator LEDs below the touchpad.
+* **Player Presets (P1-P5):** Standard PlayStation player number patterns.
+* **All Off:** Clears all indicator LEDs.
+
+---
+
+### 4. Live Map (Visualizer)
 Provides a real-time vector schematic of the controller to diagnose inputs.
 * **Button Highlights:** Pressing buttons (Cross, Circle, Square, Triangle, L1, R1, Options, Create, PS) highlights the corresponding key in blue.
 * **Joysticks Tracking:** Left/Right analog sticks coordinates are drawn on active 2D grids with precise coordinate displays.
@@ -89,7 +123,7 @@ Provides a real-time vector schematic of the controller to diagnose inputs.
 
 ---
 
-### 4. Sensors (Gyroscope & Accelerometer)
+### 5. Sensors (Gyroscope & Accelerometer)
 Provides 3D spatial diagnostics of the controller's motion.
 * **3D Glowing Card:** A rendered 3D rectangle that rotates in real-time to match the pitch, roll, and yaw of your physical controller.
 * **Attitude Quaternion:** Displays the mathematically computed quaternion coordinates (`w`, `x`, `y`, `z`) in real-time.
@@ -97,22 +131,23 @@ Provides 3D spatial diagnostics of the controller's motion.
 
 ---
 
-### 5. UDP Server
+### 6. UDP Server
 Emulates the **DualSenseX UDP Server protocol** on port `6969`.
 * **Purpose:** Allows games running inside Wine, CrossOver, Game Porting Toolkit, or native game mods (e.g. Cyberpunk 2077, Spider-Man) to send JSON instructions directly to your controller triggers and LEDs.
+* **Extended Protocol:** Maps all 19 DSX trigger types (Normal, Custom, GameCube, Resistance, Bow, Galloping, SemiAutomaticGun, AutomaticGun, Machine, Choppy, VerySoft through Hardest, Rigid, VibrateTriggerPulse, VibrateTrigger) to the closest native DualSenseT trigger mode for maximum fidelity.
 * **Configuration:** Toggle active server status and configure the server to launch automatically on app startup.
 
 ---
 
-### 6. Presets
+### 7. Presets
 Manage custom profiles.
+* **13 Default Presets:** Including *Bow & Arrow*, *Heavy Rifle*, *Racing Brake*, *Soft Click*, *Galloping*, *Machine Gun*, *Heavy Spring*, *Semi-Auto Pistol*, *Automatic Rifle*, *Bumpy Road*, *Slope Brake*, and *Off*.
 * **Save Current Preset:** Save your active L2/R2 trigger settings, LED color, and haptic pulsing configurations into a named preset.
-* **Default Presets:** Access predefined configurations like *Bow & Arrow*, *Heavy Rifle*, and *Racing Brake*.
-* **Custom Presets:** List, apply, or delete your custom saved presets. Presets are saved locally as standard JSON files.
+* **Custom Presets:** List, apply, or delete your custom saved presets. Presets are saved locally as standard JSON files with backward-compatible loading.
 
 ---
 
-### 7. Settings
+### 8. Settings
 Advanced remapping and background automation.
 
 #### Per-App Profiles:
@@ -143,10 +178,13 @@ To prevent main thread UI flooding and high CPU utilization from high-frequency 
 * Reduces idle CPU usage to **0.0%**.
 
 ### Raw HID Background Override
-The macOS `GameController` framework ceases sending output reports to controllers when the host application loses window focus. To keep adaptive triggers active when you click away to play a game, DualSenseT:
-1. Detects focus loss (`didResignActiveNotification`).
-2. Discovers the underlying controller's raw `IOHIDDevice` profile.
-3. Computes the required DualSense Bluetooth output report frame, packages the custom settings, signs the report with a **Bluetooth CRC32 checksum**, and writes it directly to the controller via raw IOKit USB/Bluetooth output channels.
+The macOS `GameController` framework ceases sending output reports to controllers when the host application loses window focus. To keep adaptive triggers active when you click away to play a game, DualSenseT implements a multi-layered persistence system:
+
+1. **Dual Focus Detection:** Monitors both `NSApplication.didResignActiveNotification` and `NSWorkspace.didActivateApplicationNotification` to reliably detect focus loss — even for apps running in `.accessory` mode without a Dock icon.
+2. **Exponential Backoff Burst:** On focus loss, immediately fires 8 HID reports at 0/30/60/100/200/500/1000/2000ms intervals to win the race against macOS and GameController framework resets.
+3. **Adaptive Background Timer:** Starts at 50ms polling for the first 3 seconds (critical window), then settles to 500ms for sustained background operation.
+4. **Stale Device Recovery:** If an HID write fails, automatically clears the cached device handle, resets the Bluetooth sequence number, and retries with a freshly discovered device.
+5. **Reconnection Resilience:** On controller reconnect, invalidates the cached HID device to force fresh discovery, preventing stale handle issues.
 
 ---
 
@@ -165,4 +203,4 @@ Run the build script with the `test` argument to compile and execute the custom 
 ```bash
 ./build.sh test
 ```
-The test suite validates preset serialization, parameter parsing, touchpad remapping thresholds, and quaternion calculations.
+The test suite validates preset serialization, parameter parsing, touchpad remapping thresholds, quaternion calculations, HID report construction, background transition behavior, and end-to-end scenario tests.

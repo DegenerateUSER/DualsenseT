@@ -4,6 +4,7 @@ public enum AppTab {
     case triggersL2
     case triggersR2
     case led
+    case haptics
     case visualizer
     case sensors
     case server
@@ -52,7 +53,7 @@ public struct ContentView: View {
                             .font(.system(size: 20, weight: .black))
                             .foregroundColor(.white)
                         
-                        if manager.activeController != nil {
+                        if manager.isConnected {
                             HStack(spacing: 4) {
                                 Image(systemName: "battery.100")
                                     .foregroundColor(.green)
@@ -83,6 +84,9 @@ public struct ContentView: View {
                         }
                         SidebarButton(title: "Lightbar", icon: "paintpalette", isActive: activeTab == .led) {
                             activeTab = .led
+                        }
+                        SidebarButton(title: "Haptics", icon: "waveform", isActive: activeTab == .haptics) {
+                            activeTab = .haptics
                         }
                         SidebarButton(title: "Live Map", icon: "gamecontroller", isActive: activeTab == .visualizer) {
                             activeTab = .visualizer
@@ -122,6 +126,7 @@ public struct ContentView: View {
                             strength: $manager.l2Strength,
                             amplitude: $manager.l2Amplitude,
                             frequency: $manager.l2Frequency,
+                            endStrength: $manager.l2EndStrength,
                             livePull: manager.leftTriggerValue
                         )
                     case .triggersR2:
@@ -134,10 +139,13 @@ public struct ContentView: View {
                             strength: $manager.r2Strength,
                             amplitude: $manager.r2Amplitude,
                             frequency: $manager.r2Frequency,
+                            endStrength: $manager.r2EndStrength,
                             livePull: manager.rightTriggerValue
                         )
                     case .led:
                         LEDColorView(manager: manager)
+                    case .haptics:
+                        RumbleTestView(manager: manager)
                     case .visualizer:
                         ControllerVisualizerView(manager: manager)
                     case .sensors:

@@ -146,7 +146,7 @@ public struct SettingsView: View {
                     HStack {
                         Text("Active Controller:")
                         Spacer()
-                        Text(manager.activeController?.vendorName ?? "No controller connected")
+                        Text(manager.isConnected ? "DualSense (\(manager.connectionType))" : "No controller connected")
                     }
                 }
                 .padding()

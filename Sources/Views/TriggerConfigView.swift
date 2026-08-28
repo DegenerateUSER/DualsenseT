@@ -65,9 +65,10 @@ public struct TriggerPreviewView: View {
                         .frame(height: height)
                     
                     if mode != .off {
+                        let isBounded = (mode == .weapon || mode == .semiAutomatic || mode == .sectionResistance || mode == .automatic || mode == .slopeFeedback)
                         let startX = CGFloat(startPos) * width
-                        let endX = mode == .weapon ? CGFloat(endPos) * width : width
-                        
+                        let endX = isBounded ? CGFloat(endPos) * width : width
+
                         RoundedRectangle(cornerRadius: 12)
                             .fill(activeZoneColor.opacity(0.3))
                             .frame(width: max(0, endX - startX), height: height)
@@ -113,20 +114,29 @@ public struct TriggerPreviewView: View {
         case .feedback: return .orange
         case .weapon: return .red
         case .vibration: return .blue
+        case .sectionResistance: return .yellow
+        case .semiAutomatic: return .red
+        case .automatic: return .pink
+        case .slopeFeedback: return .orange
+        case .multiPositionFeedback: return .purple
+        case .multiPositionVibration: return .indigo
+        case .fullPress: return .red
         }
     }
     
     var indicatorColor: Color {
         if mode == .off { return .white }
         if virtualPull >= startPos {
-            if mode == .weapon && !isFired { return .red }
+            if (mode == .weapon || mode == .semiAutomatic) && !isFired { return .red }
             return activeZoneColor
         }
         return .white
     }
     
     func updatePull(_ newValue: Float) {
-        if mode == .weapon {
+        // Weapon and Semi-Automatic (Bow) both hold against the pull until the break point,
+        // then "fire"/snap once pushed past the end.
+        if mode == .weapon || mode == .semiAutomatic {
             if newValue < startPos {
                 virtualPull = newValue
                 isFired = false
@@ -155,20 +165,24 @@ public struct TriggerPreviewView: View {
         
         let isInActiveZone = virtualPull >= startPos
         if isInActiveZone {
-            if mode == .vibration {
-                let time = Date().timeIntervalSince1970
+            let time = Date().timeIntervalSince1970
+            switch mode {
+            case .vibration, .multiPositionVibration:
                 let freqFactor = Double(frequency) * 50.0 + 10.0
                 let ampFactor = Double(amplitude) * 5.0
                 shakeOffset = CGFloat(sin(time * freqFactor * 2 * .pi) * ampFactor)
-            } else if mode == .weapon && !isFired {
-                let time = Date().timeIntervalSince1970
+            case .automatic:
+                // Automatic-weapon bucking: rate scales with the Frequency slider.
+                let rate = Double(frequency) * 25.0 + 6.0
+                let ampFactor = Double(strength) * 4.0
+                shakeOffset = CGFloat(sin(time * rate * 2 * .pi) * ampFactor)
+            case .weapon where !isFired:
                 let ampFactor = Double(strength) * 2.0
                 shakeOffset = CGFloat(sin(time * 30.0 * 2 * .pi) * ampFactor)
-            } else if mode == .feedback {
-                let time = Date().timeIntervalSince1970
+            case .feedback:
                 let ampFactor = Double(strength) * 0.8
                 shakeOffset = CGFloat(sin(time * 20.0 * 2 * .pi) * ampFactor)
-            } else {
+            default:
                 shakeOffset = 0
             }
         } else {
@@ -187,9 +201,10 @@ public struct TriggerConfigView: View {
     @Binding var strength: Float
     @Binding var amplitude: Float
     @Binding var frequency: Float
+    @Binding var endStrength: Float
     let livePull: Float
     
-    public init(manager: ControllerManager, title: String, mode: Binding<TriggerMode>, start: Binding<Float>, end: Binding<Float>, strength: Binding<Float>, amplitude: Binding<Float>, frequency: Binding<Float>, livePull: Float) {
+    public init(manager: ControllerManager, title: String, mode: Binding<TriggerMode>, start: Binding<Float>, end: Binding<Float>, strength: Binding<Float>, amplitude: Binding<Float>, frequency: Binding<Float>, endStrength: Binding<Float>, livePull: Float) {
         self.manager = manager
         self.title = title
         self._mode = mode
@@ -198,7 +213,64 @@ public struct TriggerConfigView: View {
         self._strength = strength
         self._amplitude = amplitude
         self._frequency = frequency
+        self._endStrength = endStrength
         self.livePull = livePull
+    }
+    
+    /// Whether this mode uses a start position
+    private var showStart: Bool {
+        mode != .off && mode != .fullPress
+    }
+    
+    /// Whether this mode uses an end position
+    private var showEnd: Bool {
+        switch mode {
+        case .weapon, .semiAutomatic, .sectionResistance, .slopeFeedback, .automatic:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Whether this mode uses resistance strength
+    private var showStrength: Bool {
+        switch mode {
+        case .feedback, .weapon, .sectionResistance, .semiAutomatic, .automatic, .slopeFeedback, .multiPositionFeedback:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Whether this mode uses end strength.
+    /// Slope Feedback uses it as the ending resistance; Semi-Automatic uses it as snap force.
+    private var showEndStrength: Bool {
+        mode == .slopeFeedback || mode == .semiAutomatic
+    }
+
+    /// Label for the end-strength slider, which means different things per mode.
+    private var endStrengthLabel: String {
+        mode == .semiAutomatic ? "Snap Force" : "End Strength (Slope)"
+    }
+    
+    /// Whether this mode uses vibration amplitude
+    private var showAmplitude: Bool {
+        switch mode {
+        case .vibration, .multiPositionVibration:
+            return true
+        default:
+            return false
+        }
+    }
+    
+    /// Whether this mode uses frequency
+    private var showFrequency: Bool {
+        switch mode {
+        case .vibration, .multiPositionVibration, .automatic:
+            return true
+        default:
+            return false
+        }
     }
     
     public var body: some View {
@@ -225,25 +297,47 @@ public struct TriggerConfigView: View {
                     }
                 }
                 
-                Picker("Trigger Mode", selection: $mode) {
-                    ForEach(TriggerMode.allCases) { modeCase in
-                        Text(modeCase.rawValue).tag(modeCase)
+                // Mode picker — grouped by category
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Trigger Mode")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    
+                    Picker("Trigger Mode", selection: $mode) {
+                        ForEach(["Basic", "Advanced", "Expert"], id: \.self) { category in
+                            Section(header: Text(category)) {
+                                ForEach(TriggerMode.allCases.filter { $0.category == category }) { modeCase in
+                                    Text(modeCase.rawValue).tag(modeCase)
+                                }
+                            }
+                        }
                     }
+                    .pickerStyle(.menu)
+                    
+                    // Mode description
+                    Text(modeDescription)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.top, 2)
                 }
-                .pickerStyle(.segmented)
+                .padding()
+                .background(Color.white.opacity(0.05))
+                .cornerRadius(12)
                 
                 if mode != .off {
                     VStack(spacing: 16) {
-                        HStack {
-                            Text("Start Position")
-                                .font(.subheadline)
-                            Spacer()
-                            Text(String(format: "%.2f", start))
-                                .font(.system(.body, design: .monospaced))
+                        if showStart {
+                            HStack {
+                                Text("Start Position")
+                                    .font(.subheadline)
+                                Spacer()
+                                Text(String(format: "%.2f", start))
+                                    .font(.system(.body, design: .monospaced))
+                            }
+                            Slider(value: $start, in: 0...1)
                         }
-                        Slider(value: $start, in: 0...1)
                         
-                        if mode == .weapon {
+                        if showEnd {
                             HStack {
                                 Text("End Position")
                                     .font(.subheadline)
@@ -254,7 +348,7 @@ public struct TriggerConfigView: View {
                             Slider(value: $end, in: (start + 0.05)...1.0)
                         }
                         
-                        if mode == .feedback || mode == .weapon {
+                        if showStrength {
                             HStack {
                                 Text("Resistance Strength")
                                     .font(.subheadline)
@@ -265,7 +359,18 @@ public struct TriggerConfigView: View {
                             Slider(value: $strength, in: 0...1)
                         }
                         
-                        if mode == .vibration {
+                        if showEndStrength {
+                            HStack {
+                                Text(endStrengthLabel)
+                                    .font(.subheadline)
+                                Spacer()
+                                Text(String(format: "%.0f%%", endStrength * 100))
+                                    .font(.system(.body, design: .monospaced))
+                            }
+                            Slider(value: $endStrength, in: 0...1)
+                        }
+                        
+                        if showAmplitude {
                             HStack {
                                 Text("Vibration Amplitude")
                                     .font(.subheadline)
@@ -274,9 +379,11 @@ public struct TriggerConfigView: View {
                                     .font(.system(.body, design: .monospaced))
                             }
                             Slider(value: $amplitude, in: 0...1)
-                            
+                        }
+                        
+                        if showFrequency {
                             HStack {
-                                Text("Vibration Frequency")
+                                Text(mode == .automatic ? "Effect Frequency" : "Vibration Frequency")
                                     .font(.subheadline)
                                 Spacer()
                                 Text(String(format: "%.0f%%", frequency * 100))
@@ -307,6 +414,22 @@ public struct TriggerConfigView: View {
                 }
             }
             .padding()
+        }
+    }
+    
+    private var modeDescription: String {
+        switch mode {
+        case .off: return "No adaptive trigger effect."
+        case .feedback: return "Continuous resistance from the start position onward."
+        case .weapon: return "A resistance wall between start and end that breaks when pushed past — a firearm trigger pull."
+        case .vibration: return "Vibration from the start position with configurable amplitude and frequency."
+        case .sectionResistance: return "Resistance only within the start–end zone — no effect outside it."
+        case .semiAutomatic: return "Holds firm, then snaps back hard once pushed past the end — bow-draw / semi-auto feel. Use Snap Force to tune the kick."
+        case .automatic: return "Continuous automatic-weapon bucking between start and end — set Frequency for the fire rate."
+        case .slopeFeedback: return "Resistance ramps from the start strength to the end strength across the range — a progressive brake."
+        case .multiPositionFeedback: return "Alternating strong/weak resistance zones for a bumpy, textured feel."
+        case .multiPositionVibration: return "Alternating vibration intensities for a textured vibration."
+        case .fullPress: return "Maximum resistance across the entire trigger travel."
         }
     }
 }

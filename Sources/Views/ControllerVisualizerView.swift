@@ -1,119 +1,47 @@
 import SwiftUI
 import AppKit
+import GameController
 
 public struct ControllerVisualizerView: View {
     @ObservedObject var manager: ControllerManager
-    
+
+    @State private var pulseOpacity: Double = 1.0
+
     public init(manager: ControllerManager) {
         self.manager = manager
     }
-    
+
+    /// The controller is drawn on a fixed 1.45 : 1 canvas so its proportions never distort.
+    /// Every element is positioned through `ControllerLayout`, which maps normalized
+    /// coordinates (0…1 across the canvas) to absolute points.
+    private static let aspectRatio: CGFloat = 1.45
+
     public var body: some View {
-        VStack {
+        VStack(spacing: 0) {
             Text("Live Input Map")
                 .font(.title2)
                 .fontWeight(.bold)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding([.top, .leading])
-            
-            if manager.activeController != nil {
-                Spacer()
-                ZStack {
-                    DualSenseSilhouette()
-                        .fill(Color.white.opacity(0.04))
-                        .overlay(DualSenseSilhouette().stroke(Color.white.opacity(0.15), lineWidth: 1.5))
-                        .frame(width: 380, height: 260)
-                    
-                    VStack {
-                        HStack(spacing: 4) {
-                            Image(systemName: manager.connectionType == "USB" ? "cable.connector" : "bolt.horizontal.wireframe.fill")
-                                .font(.system(size: 10))
-                            Text(manager.connectionType)
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.green.opacity(0.15))
-                        .foregroundColor(.green)
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.green.opacity(0.4), lineWidth: 1)
-                        )
-                        Spacer()
-                    }
-                    .padding(.top, 16)
-                    .frame(width: 380, height: 260)
-                    
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(manager.buttonsPressed["touchpad"] == true ? Color.blue.opacity(0.2) : Color.white.opacity(0.02))
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(manager.buttonsPressed["touchpad"] == true ? Color.blue : Color.white.opacity(0.15), lineWidth: 1.2))
-                        .frame(width: 120, height: 60)
-                        .offset(y: -45)
-                    
-                    Group {
-                        DpadButton(direction: "Up", isPressed: manager.buttonsPressed["dpadUp"] == true)
-                            .offset(x: -95, y: -25)
-                        DpadButton(direction: "Down", isPressed: manager.buttonsPressed["dpadDown"] == true)
-                            .offset(x: -95, y: 15)
-                        DpadButton(direction: "Left", isPressed: manager.buttonsPressed["dpadLeft"] == true)
-                            .offset(x: -115, y: -5)
-                        DpadButton(direction: "Right", isPressed: manager.buttonsPressed["dpadRight"] == true)
-                            .offset(x: -75, y: -5)
-                    }
-                    
-                    Group {
-                        ActionButtonLabel(label: "triangle", isPressed: manager.buttonsPressed["triangle"] == true)
-                            .offset(x: 95, y: -25)
-                        ActionButtonLabel(label: "cross", isPressed: manager.buttonsPressed["cross"] == true)
-                            .offset(x: 95, y: 15)
-                        ActionButtonLabel(label: "square", isPressed: manager.buttonsPressed["square"] == true)
-                            .offset(x: 75, y: -5)
-                        ActionButtonLabel(label: "circle", isPressed: manager.buttonsPressed["circle"] == true)
-                            .offset(x: 115, y: -5)
-                    }
-                    
-                    ShoulderButton(side: "L", isPressed: manager.buttonsPressed["l1"] == true)
-                        .offset(x: -110, y: -90)
-                    ShoulderButton(side: "R", isPressed: manager.buttonsPressed["r1"] == true)
-                        .offset(x: 110, y: -90)
-                    
-                    TriggerButtonVisual(side: "L", value: manager.leftTriggerValue, isPressed: manager.buttonsPressed["l2"] == true)
-                        .offset(x: -110, y: -125)
-                    TriggerButtonVisual(side: "R", value: manager.rightTriggerValue, isPressed: manager.buttonsPressed["r2"] == true)
-                        .offset(x: 110, y: -125)
-                    
-                    StickVisual(value: manager.leftStickValue, isPressed: manager.buttonsPressed["l3"] == true)
-                        .offset(x: -55, y: 40)
-                    
-                    StickVisual(value: manager.rightStickValue, isPressed: manager.buttonsPressed["r3"] == true)
-                        .offset(x: 55, y: 40)
-                    
-                    SmallButton(label: "create", isPressed: manager.buttonsPressed["create"] == true)
-                        .offset(x: -65, y: -50)
-                    SmallButton(label: "options", isPressed: manager.buttonsPressed["options"] == true)
-                        .offset(x: 65, y: -50)
-                    
-                    SmallButton(label: "ps", isPressed: manager.buttonsPressed["ps"] == true)
-                        .offset(x: 0, y: 15)
-                    
-                    if manager.touchpadPrimaryActive {
-                        Circle()
-                            .fill(Color.cyan)
-                            .frame(width: 8, height: 8)
-                            .offset(x: manager.touchpadPrimary.x * 50, y: -45 - (manager.touchpadPrimary.y * 25))
-                            .shadow(color: .cyan, radius: 4)
-                    }
-                    if manager.touchpadSecondaryActive {
-                        Circle()
-                            .fill(Color.purple)
-                            .frame(width: 8, height: 8)
-                            .offset(x: manager.touchpadSecondary.x * 50, y: -45 - (manager.touchpadSecondary.y * 25))
-                            .shadow(color: .purple, radius: 4)
-                    }
+
+            if manager.isConnected {
+                GeometryReader { geo in
+                    // Fit the fixed-aspect canvas inside the available area, centered.
+                    // Bleed margin so shadows/glows don't clip at the edges.
+                    let shadowBleed: CGFloat = 36
+                    let available = CGSize(width: geo.size.width - shadowBleed,
+                                           height: geo.size.height - shadowBleed)
+                    let canvasW = min(available.width, available.height * Self.aspectRatio)
+                    let canvasH = canvasW / Self.aspectRatio
+                    let layout = ControllerLayout(width: canvasW, height: canvasH)
+
+                    controllerCanvas(layout)
+                        .frame(width: canvasW, height: canvasH)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .frame(width: 380, height: 260)
-                Spacer()
+                .padding(20)
+                .onAppear { startPulsingAnimation() }
+                .onReceive(manager.$isLedPulsing) { _ in startPulsingAnimation() }
             } else {
                 Spacer()
                 VStack(spacing: 16) {
@@ -127,72 +55,296 @@ public struct ControllerVisualizerView: View {
             }
         }
     }
+
+    /// Builds the full controller from a single proportional `layout`. Scale-derived sizes
+    /// keep every element proportional to the canvas.
+    @ViewBuilder
+    private func controllerCanvas(_ layout: ControllerLayout) -> some View {
+        let s = layout.scale          // 1.0 at the reference 380pt-wide canvas
+        let tpPressed = manager.buttonsPressed["touchpad"] == true
+        let led = Color(manager.ledColor)
+        let touchpadRect = layout.touchpadRect
+
+        ZStack(alignment: .topLeading) {
+            // 1. Outer shell — solid body so it reads on any window background.
+            DualSenseShell()
+                .fill(LinearGradient(colors: [Color(white: 0.17), Color(white: 0.08)],
+                                     startPoint: .top, endPoint: .bottom))
+                .overlay(
+                    DualSenseShell().stroke(
+                        LinearGradient(colors: [Color.white.opacity(0.30), Color.white.opacity(0.06)],
+                                       startPoint: .top, endPoint: .bottom),
+                        lineWidth: 1.5 * s)
+                )
+                .shadow(color: Color.black.opacity(0.55), radius: 16 * s, x: 0, y: 10 * s)
+
+            // 2. Central accent plate behind the sticks and face clusters.
+            DualSenseAccentPlate()
+                .fill(LinearGradient(colors: [Color(white: 0.11), Color(white: 0.05)],
+                                     startPoint: .top, endPoint: .bottom))
+                .overlay(DualSenseAccentPlate().stroke(Color.white.opacity(0.08), lineWidth: 1.2 * s))
+
+            // 3. Lightbar — glowing strip framing the sides & bottom of the touchpad.
+            //    Drawn before the touchpad so the pad sits cleanly inside the glow.
+            DualSenseLightbar()
+                .stroke(led, style: StrokeStyle(lineWidth: 3.0 * s, lineCap: .round, lineJoin: .round))
+                .shadow(color: led.opacity(0.9),
+                        radius: (manager.isLedPulsing ? 3.0 + CGFloat((1.0 - pulseOpacity) * 5.0) : 4.0) * s)
+                .shadow(color: led.opacity(0.5),
+                        radius: (manager.isLedPulsing ? 6.0 + CGFloat((1.0 - pulseOpacity) * 8.0) : 9.0) * s)
+                .opacity(manager.isLedPulsing ? 0.35 + (pulseOpacity * 0.65) : 1.0)
+
+            // 4. Touchpad.
+            // Use a standard RoundedRectangle in its own local frame. The old custom Shape
+            // occupied the entire controller canvas while returning an offset sub-path; on
+            // macOS SwiftUI its gradient backing leaked from the touchpad's top-left corner
+            // to the canvas edges, producing the giant rectangle that hid the right/lower body.
+            RoundedRectangle(cornerRadius: 6 * s)
+                .fill(LinearGradient(
+                    colors: tpPressed ? [Color(white: 0.13), Color(white: 0.08)] : [Color(white: 0.24), Color(white: 0.16)],
+                    startPoint: .top, endPoint: .bottom))
+                .frame(width: touchpadRect.width, height: touchpadRect.height)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6 * s)
+                        .stroke(tpPressed ? led.opacity(0.9) : Color.white.opacity(0.14),
+                                lineWidth: (tpPressed ? 1.6 : 1.0) * s)
+                )
+                .shadow(color: Color.black.opacity(tpPressed ? 0.5 : 0.3),
+                        radius: (tpPressed ? 1.0 : 4.0) * s, y: (tpPressed ? 0.5 : 2.5) * s)
+                .position(x: touchpadRect.midX, y: touchpadRect.midY)
+                .animation(.interactiveSpring(response: 0.12, dampingFraction: 0.8), value: tpPressed)
+
+            // 5. Triggers seated on the shoulders, shoulder buttons below them.
+            TriggerButtonVisual(side: "L", value: manager.leftTriggerValue, isPressed: manager.buttonsPressed["l2"] == true)
+                .scaleEffect(s).position(layout.point(0.215, 0.13))
+            TriggerButtonVisual(side: "R", value: manager.rightTriggerValue, isPressed: manager.buttonsPressed["r2"] == true)
+                .scaleEffect(s).position(layout.point(0.785, 0.13))
+            ShoulderButton(side: "L", isPressed: manager.buttonsPressed["l1"] == true)
+                .scaleEffect(s).position(layout.point(0.215, 0.235))
+            ShoulderButton(side: "R", isPressed: manager.buttonsPressed["r1"] == true)
+                .scaleEffect(s).position(layout.point(0.785, 0.235))
+
+            // 6. D-pad cluster (upper-left face) on a unifying plus-shaped backing.
+            ClusterBacking(kind: .plus)
+                .scaleEffect(s).position(layout.point(0.255, 0.47))
+            DpadButton(direction: "Up", isPressed: manager.buttonsPressed["dpadUp"] == true)
+                .scaleEffect(s).position(layout.point(0.255, 0.395))
+            DpadButton(direction: "Down", isPressed: manager.buttonsPressed["dpadDown"] == true)
+                .scaleEffect(s).position(layout.point(0.255, 0.545))
+            DpadButton(direction: "Left", isPressed: manager.buttonsPressed["dpadLeft"] == true)
+                .scaleEffect(s).position(layout.point(0.213, 0.47))
+            DpadButton(direction: "Right", isPressed: manager.buttonsPressed["dpadRight"] == true)
+                .scaleEffect(s).position(layout.point(0.297, 0.47))
+
+            // 7. Action button cluster (upper-right face) on a circular backing.
+            ClusterBacking(kind: .circle)
+                .scaleEffect(s).position(layout.point(0.745, 0.47))
+            ActionButtonLabel(label: "triangle", isPressed: manager.buttonsPressed["triangle"] == true)
+                .scaleEffect(s).position(layout.point(0.745, 0.395))
+            ActionButtonLabel(label: "cross", isPressed: manager.buttonsPressed["cross"] == true)
+                .scaleEffect(s).position(layout.point(0.745, 0.545))
+            ActionButtonLabel(label: "square", isPressed: manager.buttonsPressed["square"] == true)
+                .scaleEffect(s).position(layout.point(0.703, 0.47))
+            ActionButtonLabel(label: "circle", isPressed: manager.buttonsPressed["circle"] == true)
+                .scaleEffect(s).position(layout.point(0.787, 0.47))
+
+            // 8. Create / Options.
+            SmallButton(label: "create", isPressed: manager.buttonsPressed["create"] == true)
+                .scaleEffect(s).position(layout.point(0.345, 0.30))
+            SmallButton(label: "options", isPressed: manager.buttonsPressed["options"] == true)
+                .scaleEffect(s).position(layout.point(0.655, 0.30))
+
+            // 9. Player indicator LEDs just under the touchpad. Driven by the same
+            //    `playerLEDs` bitmask the Haptics tab sets — transport-agnostic, so it
+            //    works over Bluetooth (where there is no GCController playerIndex).
+            PlayerIndicatorLEDs(litMask: manager.playerLEDs)
+                .scaleEffect(s).position(layout.point(0.5, 0.415))
+
+            // 10. PlayStation button, centered between the sticks.
+            SmallButton(label: "ps", isPressed: manager.buttonsPressed["ps"] == true)
+                .scaleEffect(s).position(layout.point(0.5, 0.60))
+
+            // 11. Thumbsticks (symmetric, lower face).
+            StickVisual(value: manager.leftStickValue, isPressed: manager.buttonsPressed["l3"] == true)
+                .scaleEffect(s).position(layout.point(0.36, 0.72))
+            StickVisual(value: manager.rightStickValue, isPressed: manager.buttonsPressed["r3"] == true)
+                .scaleEffect(s).position(layout.point(0.64, 0.72))
+
+            // 12. Live touch markers, mapped into the touchpad rectangle.
+            if manager.touchpadPrimaryActive {
+                TouchpadMarker(position: layout.touchpadPoint(manager.touchpadPrimary), color: .cyan)
+            }
+            if manager.touchpadSecondaryActive {
+                TouchpadMarker(position: layout.touchpadPoint(manager.touchpadSecondary), color: .purple)
+            }
+
+            // 13. Connection status pill, top-center.
+            HStack(spacing: 4) {
+                Image(systemName: manager.connectionType == "USB" ? "cable.connector" : "bolt.horizontal.wireframe.fill")
+                    .font(.system(size: 9 * s))
+                Text(manager.connectionType)
+                    .font(.system(size: 9 * s, weight: .bold, design: .monospaced))
+            }
+            .padding(.horizontal, 6 * s)
+            .padding(.vertical, 3 * s)
+            .background(Color.green.opacity(0.15))
+            .foregroundColor(.green)
+            .cornerRadius(6 * s)
+            .overlay(RoundedRectangle(cornerRadius: 6 * s).stroke(Color.green.opacity(0.4), lineWidth: 1))
+            .position(layout.point(0.5, 0.045))
+        }
+        .frame(width: layout.width, height: layout.height)
+    }
+
+    private func startPulsingAnimation() {
+        if manager.isLedPulsing {
+            withAnimation(Animation.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
+                pulseOpacity = 0.3
+            }
+        } else {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                pulseOpacity = 1.0
+            }
+        }
+    }
 }
+
+// MARK: - Cluster backing plates
+
+/// Dark backing plate that visually unifies a button cluster.
+public struct ClusterBacking: View {
+    public enum Kind { case plus, circle }
+    let kind: Kind
+
+    public init(kind: Kind) {
+        self.kind = kind
+    }
+
+    public var body: some View {
+        let fill = LinearGradient(colors: [Color(white: 0.10), Color(white: 0.06)],
+                                  startPoint: .top, endPoint: .bottom)
+        let stroke = Color.white.opacity(0.08)
+        ZStack {
+            switch kind {
+            case .plus:
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(fill)
+                    .frame(width: 54, height: 20)
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(fill)
+                    .frame(width: 20, height: 54)
+                RoundedRectangle(cornerRadius: 5)
+                    .stroke(stroke, lineWidth: 1)
+                    .frame(width: 54, height: 20)
+                RoundedRectangle(cornerRadius: 5)
+                    .stroke(stroke, lineWidth: 1)
+                    .frame(width: 20, height: 54)
+            case .circle:
+                Circle()
+                    .fill(fill)
+                    .frame(width: 62, height: 62)
+                    .overlay(Circle().stroke(stroke, lineWidth: 1))
+            }
+        }
+        .shadow(color: Color.black.opacity(0.35), radius: 3, y: 2)
+    }
+}
+
+// MARK: - Premium DualSense UI Components
 
 public struct DpadButton: View {
     let direction: String
     let isPressed: Bool
-    
+
     public init(direction: String, isPressed: Bool) {
         self.direction = direction
         self.isPressed = isPressed
     }
-    
+
     public var body: some View {
-        Rectangle()
-            .fill(isPressed ? Color.blue.opacity(0.8) : Color.white.opacity(0.1))
-            .frame(width: 16, height: 16)
-            .cornerRadius(4)
+        let activeGlow = Color.cyan
+
+        RoundedRectangle(cornerRadius: 4)
+            .fill(isPressed ? LinearGradient(colors: [Color(white: 0.30), Color(white: 0.24)], startPoint: .top, endPoint: .bottom) : LinearGradient(colors: [Color(white: 0.22), Color(white: 0.15)], startPoint: .top, endPoint: .bottom))
+            .frame(width: 18, height: 18)
             .overlay(
                 RoundedRectangle(cornerRadius: 4)
-                    .stroke(isPressed ? Color.cyan : Color.white.opacity(0.3), lineWidth: 1)
+                    .stroke(isPressed ? activeGlow : Color.white.opacity(0.16), lineWidth: 1.2)
             )
-            .shadow(color: isPressed ? .cyan.opacity(0.5) : .clear, radius: 4)
+            .overlay(
+                arrowImage
+                    .font(.system(size: 8, weight: .heavy))
+                    .foregroundColor(isPressed ? .white : Color.white.opacity(0.75))
+                    .shadow(color: isPressed ? activeGlow : Color.clear, radius: isPressed ? 3 : 0)
+            )
+            .shadow(color: isPressed ? activeGlow.opacity(0.6) : Color.black.opacity(0.35),
+                    radius: isPressed ? 1.0 : 3.0,
+                    x: 0,
+                    y: isPressed ? 0.5 : 2.5)
+            .offset(y: isPressed ? 1.2 : 0)
+            .scaleEffect(isPressed ? 0.96 : 1.0)
+            .animation(.interactiveSpring(response: 0.12, dampingFraction: 0.8), value: isPressed)
+    }
+
+    @ViewBuilder
+    private var arrowImage: some View {
+        switch direction {
+        case "Up":
+            Image(systemName: "chevron.up")
+        case "Down":
+            Image(systemName: "chevron.down")
+        case "Left":
+            Image(systemName: "chevron.left")
+        case "Right":
+            Image(systemName: "chevron.right")
+        default:
+            EmptyView()
+        }
     }
 }
 
 public struct ActionButtonLabel: View {
     let label: String
     let isPressed: Bool
-    
+
     public init(label: String, isPressed: Bool) {
         self.label = label
         self.isPressed = isPressed
     }
-    
+
     public var body: some View {
+        let glyphColor = isPressed ? Color.white : Color.white.opacity(0.75)
+        let activeGlow = Color.cyan
+
         Circle()
-            .fill(isPressed ? Color.blue.opacity(0.8) : Color.white.opacity(0.1))
-            .frame(width: 18, height: 18)
+            .fill(isPressed ? LinearGradient(colors: [Color(white: 0.30), Color(white: 0.24)], startPoint: .top, endPoint: .bottom) : LinearGradient(colors: [Color(white: 0.22), Color(white: 0.15)], startPoint: .top, endPoint: .bottom))
+            .frame(width: 22, height: 22)
             .overlay(
                 Circle()
-                    .stroke(isPressed ? Color.cyan : Color.white.opacity(0.3), lineWidth: 1)
+                    .stroke(isPressed ? activeGlow : Color.white.opacity(0.16), lineWidth: 1.2)
             )
-            .overlay(symbolView)
-            .shadow(color: isPressed ? .cyan.opacity(0.5) : .clear, radius: 4)
+            .overlay(
+                symbolView
+                    .foregroundColor(glyphColor)
+                    .shadow(color: isPressed ? activeGlow : Color.clear, radius: isPressed ? 3 : 0)
+            )
+            .shadow(color: isPressed ? activeGlow.opacity(0.6) : Color.black.opacity(0.35),
+                    radius: isPressed ? 1.0 : 3.0,
+                    x: 0,
+                    y: isPressed ? 0.5 : 2.5)
+            .offset(y: isPressed ? 1.2 : 0)
+            .scaleEffect(isPressed ? 0.96 : 1.0)
+            .animation(.interactiveSpring(response: 0.12, dampingFraction: 0.8), value: isPressed)
     }
-    
+
     @ViewBuilder
-    var symbolView: some View {
+    private var symbolView: some View {
         switch label {
-        case "triangle":
-            Image(systemName: "triangle")
-                .font(.system(size: 8, weight: .bold))
-                .foregroundColor(.green)
-        case "cross":
-            Image(systemName: "multiply")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(.blue)
-        case "square":
-            Image(systemName: "square")
-                .font(.system(size: 8, weight: .bold))
-                .foregroundColor(.pink)
-        case "circle":
-            Image(systemName: "circle")
-                .font(.system(size: 8, weight: .bold))
-                .foregroundColor(.red)
-        default:
-            EmptyView()
+        case "triangle": Image(systemName: "triangle").font(.system(size: 10, weight: .bold))
+        case "cross": Image(systemName: "multiply").font(.system(size: 12, weight: .bold))
+        case "square": Image(systemName: "square").font(.system(size: 10, weight: .bold))
+        case "circle": Image(systemName: "circle").font(.system(size: 10, weight: .bold))
+        default: EmptyView()
         }
     }
 }
@@ -200,26 +352,35 @@ public struct ActionButtonLabel: View {
 public struct ShoulderButton: View {
     let side: String
     let isPressed: Bool
-    
+
     public init(side: String, isPressed: Bool) {
         self.side = side
         self.isPressed = isPressed
     }
-    
+
     public var body: some View {
-        RoundedRectangle(cornerRadius: 4)
-            .fill(isPressed ? Color.blue.opacity(0.8) : Color.white.opacity(0.1))
-            .frame(width: 45, height: 12)
+        let activeGlow = Color.cyan
+
+        RoundedRectangle(cornerRadius: 6)
+            .fill(isPressed ? LinearGradient(colors: [Color(white: 0.30), Color(white: 0.24)], startPoint: .top, endPoint: .bottom) : LinearGradient(colors: [Color(white: 0.22), Color(white: 0.15)], startPoint: .top, endPoint: .bottom))
+            .frame(width: 48, height: 16)
             .overlay(
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(isPressed ? Color.cyan : Color.white.opacity(0.3), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(isPressed ? activeGlow : Color.white.opacity(0.16), lineWidth: 1.2)
             )
             .overlay(
                 Text(side + "1")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundColor(.white.opacity(0.7))
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(isPressed ? .white : .white.opacity(0.7))
+                    .shadow(color: isPressed ? activeGlow : Color.clear, radius: isPressed ? 3 : 0)
             )
-            .shadow(color: isPressed ? .cyan.opacity(0.5) : .clear, radius: 4)
+            .shadow(color: isPressed ? activeGlow.opacity(0.6) : Color.black.opacity(0.35),
+                    radius: isPressed ? 1.0 : 3.0,
+                    x: 0,
+                    y: isPressed ? 0.5 : 2.5)
+            .offset(y: isPressed ? 1.2 : 0)
+            .scaleEffect(isPressed ? 0.96 : 1.0)
+            .animation(.interactiveSpring(response: 0.12, dampingFraction: 0.8), value: isPressed)
     }
 }
 
@@ -227,67 +388,140 @@ public struct TriggerButtonVisual: View {
     let side: String
     let value: Float
     let isPressed: Bool
-    
+
     public init(side: String, value: Float, isPressed: Bool) {
         self.side = side
         self.value = value
         self.isPressed = isPressed
     }
-    
+
     public var body: some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 0) {
+            // Angled Trigger Cap
             ZStack(alignment: .bottom) {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.white.opacity(0.1))
-                    .frame(width: 35, height: 25)
+                // The main trigger button housing
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(LinearGradient(
+                        colors: [Color(white: 0.20), Color(white: 0.10)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ))
+                    .frame(width: 38, height: 28)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(isPressed ? Color.cyan : Color.white.opacity(0.3), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 5)
+                            .stroke(isPressed ? Color.cyan.opacity(0.8) : Color.white.opacity(0.16), lineWidth: 1.2)
                     )
-                
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(LinearGradient(colors: [.cyan, .blue], startPoint: .top, endPoint: .bottom))
-                    .frame(width: 35, height: 25 * CGFloat(value))
-                    .animation(.interactiveSpring(response: 0.1, dampingFraction: 0.8), value: value)
+
+                // Embedded glowing vertical level bar/indicator inside the trigger cap representing the exact depth
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(Color(white: 0.28))
+                    .frame(width: 3, height: 18)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 1.5)
+                            .fill(LinearGradient(colors: [Color.cyan, Color.blue], startPoint: .top, endPoint: .bottom))
+                            .frame(height: 18 * CGFloat(value))
+                    , alignment: .bottom)
+                    .padding(.bottom, 4)
+
+                Text(side + "2")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(isPressed ? .cyan : .white.opacity(0.75))
+                    .padding(.bottom, 2)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            
-            Text(side + "2")
-                .font(.system(size: 8, weight: .bold))
-                .foregroundColor(.white.opacity(0.7))
+            .offset(y: CGFloat(value) * 5.0) // Travels downward
+            .scaleEffect(y: 1.0 - (CGFloat(value) * 0.14), anchor: .top) // Compress height/pivot away
+            .rotation3DEffect(
+                .degrees(Double(-value * 12.0)),
+                axis: (x: 1.0, y: 0.0, z: 0.0),
+                anchor: .top
+            )
+            .shadow(color: isPressed ? Color.cyan.opacity(0.4) : Color.black.opacity(0.4),
+                    radius: isPressed ? 1.0 : 4.0 - CGFloat(value * 2.0))
+            .animation(.interactiveSpring(response: 0.1, dampingFraction: 0.8), value: value)
         }
+        .frame(width: 38, height: 34, alignment: .top)
     }
 }
 
 public struct StickVisual: View {
     let value: CGPoint
     let isPressed: Bool
-    
+
+    // Limits the max visual displacement to prevent clipping
+    private let maxDisplacement: CGFloat = 6.5
+
     public init(value: CGPoint, isPressed: Bool) {
         self.value = value
         self.isPressed = isPressed
     }
-    
+
     public var body: some View {
         ZStack {
+            // Joystick Outer Housing/Well
             Circle()
-                .stroke(Color.white.opacity(0.2), lineWidth: 1.5)
-                .frame(width: 44, height: 44)
-            
+                .fill(Color(white: 0.04))
+                .frame(width: 48, height: 48)
+                .overlay(Circle().stroke(Color.white.opacity(0.14), lineWidth: 1.5))
+
+            // Joystick Stem Shadow - dynamically shift in opposite direction of tilt
             Circle()
-                .fill(Color.black.opacity(0.4))
-                .frame(width: 40, height: 40)
-            
-            Circle()
-                .fill(isPressed ? Color.blue.opacity(0.8) : Color.white.opacity(0.15))
-                .overlay(
-                    Circle()
-                        .stroke(isPressed ? Color.cyan : Color.white.opacity(0.4), lineWidth: 1.5)
+                .fill(Color.black.opacity(0.6))
+                .frame(width: 32, height: 32)
+                .blur(radius: isPressed ? 1.0 : 2.5)
+                .offset(
+                    x: -value.x * maxDisplacement * 0.35,
+                    y: value.y * maxDisplacement * 0.35
                 )
-                .frame(width: 26, height: 26)
-                .offset(x: value.x * 12, y: -value.y * 12)
-                .shadow(color: isPressed ? .cyan.opacity(0.5) : .clear, radius: 4)
-                .animation(.interactiveSpring(response: 0.1, dampingFraction: 0.8), value: value)
+
+            // Joystick Moving Cap
+            ZStack {
+                // Outer rubber grip cap
+                Circle()
+                    .fill(LinearGradient(
+                        colors: [Color(white: 0.30), Color(white: 0.18)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ))
+                    .frame(width: 34, height: 34)
+
+                // Textured concentric rings
+                Circle()
+                    .stroke(Color.white.opacity(0.20), lineWidth: 1.0)
+                    .frame(width: 26, height: 26)
+
+                Circle()
+                    .stroke(Color.white.opacity(0.12), lineWidth: 0.8)
+                    .frame(width: 18, height: 18)
+
+                // Thumb depression dome
+                Circle()
+                    .fill(Color(white: 0.14))
+                    .frame(width: 10, height: 10)
+                    .overlay(Circle().stroke(Color.white.opacity(0.07), lineWidth: 0.6))
+
+                // L3/R3 clicked glow ring
+                if isPressed {
+                    Circle()
+                        .stroke(Color.cyan, lineWidth: 1.2)
+                        .frame(width: 34, height: 34)
+                        .shadow(color: Color.cyan.opacity(0.8), radius: 4)
+                }
+            }
+            .offset(
+                x: value.x * maxDisplacement,
+                y: -value.y * maxDisplacement
+            )
+            .scaleEffect(isPressed ? 0.90 : 1.0) // L3/R3 physical compression
+            .rotation3DEffect(
+                .degrees(Double(value.x * 15.0)),
+                axis: (x: 0.0, y: 1.0, z: 0.0)
+            )
+            .rotation3DEffect(
+                .degrees(Double(-value.y * 15.0)),
+                axis: (x: 1.0, y: 0.0, z: 0.0)
+            )
+            .animation(.interactiveSpring(response: 0.12, dampingFraction: 0.8), value: value)
+            .animation(.interactiveSpring(response: 0.10, dampingFraction: 0.8), value: isPressed)
         }
     }
 }
@@ -295,66 +529,272 @@ public struct StickVisual: View {
 public struct SmallButton: View {
     let label: String
     let isPressed: Bool
-    
+
     public init(label: String, isPressed: Bool) {
         self.label = label
         self.isPressed = isPressed
     }
-    
+
     public var body: some View {
+        let activeGlow = Color.cyan
+
         Group {
             if label == "ps" {
                 Circle()
-                    .fill(isPressed ? Color.blue.opacity(0.8) : Color.white.opacity(0.1))
-                    .frame(width: 24, height: 24)
+                    .fill(isPressed ? LinearGradient(colors: [Color(white: 0.30), Color(white: 0.24)], startPoint: .top, endPoint: .bottom) : LinearGradient(colors: [Color(white: 0.18), Color(white: 0.10)], startPoint: .top, endPoint: .bottom))
+                    .frame(width: 26, height: 26)
                     .overlay(
                         Circle()
-                            .stroke(isPressed ? Color.cyan : Color.white.opacity(0.3), lineWidth: 1)
+                            .stroke(isPressed ? activeGlow : Color.white.opacity(0.16), lineWidth: 1.2)
                     )
                     .overlay(
                         Image(systemName: "gamecontroller.fill")
-                            .font(.system(size: 11))
-                            .foregroundColor(.white.opacity(0.8))
+                            .font(.system(size: 12))
+                            .foregroundColor(isPressed ? .white : .white.opacity(0.8))
+                            .shadow(color: isPressed ? activeGlow : Color.clear, radius: isPressed ? 3 : 0)
                     )
+                    .shadow(color: isPressed ? activeGlow.opacity(0.6) : Color.black.opacity(0.35),
+                            radius: isPressed ? 1.0 : 3.0,
+                            x: 0,
+                            y: isPressed ? 0.5 : 2.5)
+                    .offset(y: isPressed ? 1.2 : 0)
+                    .scaleEffect(isPressed ? 0.96 : 1.0)
+                    .animation(.interactiveSpring(response: 0.12, dampingFraction: 0.8), value: isPressed)
             } else {
                 Capsule()
-                    .fill(isPressed ? Color.blue.opacity(0.8) : Color.white.opacity(0.1))
-                    .frame(width: 14, height: 6)
-                    .rotationEffect(.degrees(label == "create" ? -30 : 30))
+                    .fill(isPressed ? LinearGradient(colors: [Color(white: 0.30), Color(white: 0.24)], startPoint: .top, endPoint: .bottom) : LinearGradient(colors: [Color(white: 0.26), Color(white: 0.19)], startPoint: .top, endPoint: .bottom))
+                    .frame(width: 6, height: 14)
+                    .rotationEffect(.degrees(label == "create" ? -20 : 20))
                     .overlay(
                         Capsule()
-                            .stroke(isPressed ? Color.cyan : Color.white.opacity(0.3), lineWidth: 1)
-                            .rotationEffect(.degrees(label == "create" ? -30 : 30))
+                            .stroke(isPressed ? activeGlow : Color.white.opacity(0.18), lineWidth: 0.8)
+                            .rotationEffect(.degrees(label == "create" ? -20 : 20))
                     )
+                    .shadow(color: isPressed ? activeGlow.opacity(0.6) : Color.black.opacity(0.35),
+                            radius: isPressed ? 1.0 : 3.0,
+                            x: 0,
+                            y: isPressed ? 0.5 : 2.5)
+                    .offset(y: isPressed ? 1.2 : 0)
+                    .scaleEffect(isPressed ? 0.96 : 1.0)
+                    .animation(.interactiveSpring(response: 0.12, dampingFraction: 0.8), value: isPressed)
             }
         }
-        .shadow(color: isPressed ? .cyan.opacity(0.5) : .clear, radius: 4)
     }
 }
 
-public struct DualSenseSilhouette: Shape {
+public struct TouchpadMarker: View {
+    let position: CGPoint
+    let color: Color
+
+    @State private var rippleScale: CGFloat = 0.5
+    @State private var rippleOpacity: Double = 0.8
+
+    public init(position: CGPoint, color: Color) {
+        self.position = position
+        self.color = color
+    }
+
+    public var body: some View {
+        ZStack {
+            // Ripple Ring
+            Circle()
+                .stroke(color, lineWidth: 1.2)
+                .frame(width: 16, height: 16)
+                .scaleEffect(rippleScale)
+                .opacity(rippleOpacity)
+                .onAppear {
+                    withAnimation(Animation.easeOut(duration: 1.0).repeatForever(autoreverses: false)) {
+                        rippleScale = 2.0
+                        rippleOpacity = 0.0
+                    }
+                }
+
+            // Core Dot
+            Circle()
+                .fill(color)
+                .frame(width: 8, height: 8)
+                .shadow(color: color, radius: 4)
+        }
+        .position(position)
+    }
+}
+
+/// Five player indicator LEDs driven directly by the controller's LED bitmask
+/// (bit 0 = leftmost … bit 4 = rightmost), matching the Haptics tab toggles.
+public struct PlayerIndicatorLEDs: View {
+    let litMask: UInt8
+
+    public init(litMask: UInt8) {
+        self.litMask = litMask
+    }
+
+    public var body: some View {
+        HStack(spacing: 3) {
+            ForEach(0..<5) { index in
+                let lit = (litMask & UInt8(1 << index)) != 0
+                Circle()
+                    .fill(lit ? Color(red: 1.0, green: 0.73, blue: 0.2) : Color.white.opacity(0.14))
+                    .frame(width: 2.4, height: 2.4)
+                    .shadow(color: lit ? Color(red: 1.0, green: 0.73, blue: 0.2).opacity(0.8) : Color.clear, radius: 1.5)
+            }
+        }
+    }
+}
+
+// MARK: - Proportional Layout
+
+/// Maps normalized controller coordinates (0…1 across the canvas) to absolute points, and
+/// derives a uniform `scale` so leaf components size proportionally to the canvas. The whole
+/// Live Map is built from this single source of truth, so nothing drifts or clips on resize.
+///
+/// Touchpad bounds (`tpMinX`…`tpMaxY`) are shared by the touchpad shape, the lightbar shape,
+/// and the live touch markers, guaranteeing they stay perfectly aligned.
+public struct ControllerLayout {
+    public let width: CGFloat
+    public let height: CGFloat
+    /// 1.0 at the 380pt reference width that the leaf components were authored against.
+    public let scale: CGFloat
+
+    // Touchpad rectangle in normalized coordinates.
+    public let tpMinX: CGFloat = 0.40
+    public let tpMaxX: CGFloat = 0.60
+    public let tpMinY: CGFloat = 0.14
+    public let tpMaxY: CGFloat = 0.36
+
+    public init(width: CGFloat, height: CGFloat) {
+        self.width = width
+        self.height = height
+        self.scale = width / 380.0
+    }
+
+    /// Normalized (nx, ny) → absolute point.
+    public func point(_ nx: CGFloat, _ ny: CGFloat) -> CGPoint {
+        CGPoint(x: nx * width, y: ny * height)
+    }
+
+    /// Absolute touchpad bounds inside the controller canvas.
+    public var touchpadRect: CGRect {
+        CGRect(x: tpMinX * width,
+               y: tpMinY * height,
+               width: (tpMaxX - tpMinX) * width,
+               height: (tpMaxY - tpMinY) * height)
+    }
+
+    /// Maps a touchpad reading (x,y ∈ roughly -1…1) into the on-screen touchpad rectangle.
+    public func touchpadPoint(_ value: CGPoint) -> CGPoint {
+        let cx = (tpMinX + tpMaxX) / 2
+        let cy = (tpMinY + tpMaxY) / 2
+        let halfW = (tpMaxX - tpMinX) / 2
+        let halfH = (tpMaxY - tpMinY) / 2
+        let nx = cx + max(-1, min(1, value.x)) * halfW
+        let ny = cy - max(-1, min(1, value.y)) * halfH
+        return point(nx, ny)
+    }
+}
+
+// MARK: - Custom Vector Shapes representing DualSense Geometry
+//
+// All shapes derive their key landmarks from the same normalized fractions used to position
+// the buttons in `controllerCanvas`, so the silhouette and the live elements stay in register.
+
+/// The outer body: shoulder peaks at the top corners, a gentle dip over the touchpad,
+/// sides sweeping out and down into the two grips. Symmetric about x = 0.5.
+public struct DualSenseShell: Shape {
     public init() {}
-    
     public func path(in rect: CGRect) -> Path {
+        let w = rect.width, h = rect.height
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: w * x, y: h * y) }
         var path = Path()
-        let w = rect.width
-        let h = rect.height
-        
-        path.move(to: CGPoint(x: w * 0.3, y: h * 0.15))
-        path.addLine(to: CGPoint(x: w * 0.7, y: h * 0.15))
-        
-        path.addQuadCurve(to: CGPoint(x: w * 0.9, y: h * 0.4), control: CGPoint(x: w * 0.85, y: h * 0.2))
-        path.addQuadCurve(to: CGPoint(x: w * 0.85, y: h * 0.9), control: CGPoint(x: w * 0.95, y: h * 0.65))
-        path.addQuadCurve(to: CGPoint(x: w * 0.7, y: h * 0.85), control: CGPoint(x: w * 0.8, y: h * 0.95))
-        
-        path.addQuadCurve(to: CGPoint(x: w * 0.5, y: h * 0.75), control: CGPoint(x: w * 0.6, y: h * 0.75))
-        path.addQuadCurve(to: CGPoint(x: w * 0.3, y: h * 0.85), control: CGPoint(x: w * 0.4, y: h * 0.75))
-        path.addQuadCurve(to: CGPoint(x: w * 0.15, y: h * 0.9), control: CGPoint(x: w * 0.2, y: h * 0.95))
-        
-        path.addQuadCurve(to: CGPoint(x: w * 0.1, y: h * 0.4), control: CGPoint(x: w * 0.05, y: h * 0.65))
-        path.addQuadCurve(to: CGPoint(x: w * 0.3, y: h * 0.15), control: CGPoint(x: w * 0.15, y: h * 0.2))
-        
+
+        path.move(to: p(0.50, 0.045))
+        // Top edge rising to the right shoulder peak.
+        path.addCurve(to: p(0.74, 0.09),
+                      control1: p(0.60, 0.025), control2: p(0.68, 0.03))
+        // Right shoulder rounding outward.
+        path.addCurve(to: p(0.94, 0.30),
+                      control1: p(0.86, 0.06), control2: p(0.94, 0.16))
+        // Outer right edge sweeping down into the grip.
+        path.addCurve(to: p(0.78, 0.93),
+                      control1: p(0.99, 0.55), control2: p(0.88, 0.88))
+        // Right grip tip.
+        path.addQuadCurve(to: p(0.66, 0.86), control: p(0.72, 0.99))
+        // Inner right grip rising toward the center.
+        path.addQuadCurve(to: p(0.56, 0.64), control: p(0.62, 0.74))
+        // Central underside arch.
+        path.addQuadCurve(to: p(0.44, 0.64), control: p(0.50, 0.60))
+        // Inner left grip descending.
+        path.addQuadCurve(to: p(0.34, 0.86), control: p(0.38, 0.74))
+        // Left grip tip.
+        path.addQuadCurve(to: p(0.22, 0.93), control: p(0.28, 0.99))
+        // Outer left edge sweeping back up.
+        path.addCurve(to: p(0.06, 0.30),
+                      control1: p(0.12, 0.88), control2: p(0.01, 0.55))
+        // Left shoulder rounding inward.
+        path.addCurve(to: p(0.26, 0.09),
+                      control1: p(0.06, 0.16), control2: p(0.14, 0.06))
+        // Top edge back to center.
+        path.addCurve(to: p(0.50, 0.045),
+                      control1: p(0.32, 0.03), control2: p(0.40, 0.025))
         path.closeSubpath()
+        return path
+    }
+}
+
+/// The darker central plate behind the sticks and face clusters.
+public struct DualSenseAccentPlate: Shape {
+    public init() {}
+    public func path(in rect: CGRect) -> Path {
+        let w = rect.width, h = rect.height
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: w * x, y: h * y) }
+        var path = Path()
+
+        path.move(to: p(0.30, 0.32))
+        path.addLine(to: p(0.70, 0.32))
+        // Down the right side, around the right stick.
+        path.addQuadCurve(to: p(0.78, 0.62), control: p(0.80, 0.45))
+        path.addQuadCurve(to: p(0.62, 0.82), control: p(0.74, 0.78))
+        // Up into the central splitter.
+        path.addLine(to: p(0.50, 0.68))
+        // Down the left grip leg.
+        path.addLine(to: p(0.38, 0.82))
+        // Around the left stick back to start.
+        path.addQuadCurve(to: p(0.22, 0.62), control: p(0.26, 0.78))
+        path.addQuadCurve(to: p(0.30, 0.32), control: p(0.20, 0.45))
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// The rounded-rectangle touchpad, derived from `ControllerLayout`'s shared bounds.
+public struct DualSenseTouchpad: Shape {
+    public init() {}
+    public func path(in rect: CGRect) -> Path {
+        let w = rect.width, h = rect.height
+        let l = ControllerLayout(width: w, height: h)
+        let tp = CGRect(x: l.tpMinX * w, y: l.tpMinY * h,
+                        width: (l.tpMaxX - l.tpMinX) * w, height: (l.tpMaxY - l.tpMinY) * h)
+        return Path(roundedRect: tp, cornerRadius: 6 * l.scale)
+    }
+}
+
+/// The lightbar: a glowing line tracing the left, bottom and right edges of the touchpad.
+public struct DualSenseLightbar: Shape {
+    public init() {}
+    public func path(in rect: CGRect) -> Path {
+        let w = rect.width, h = rect.height
+        let l = ControllerLayout(width: w, height: h)
+        let r = 6 * l.scale
+        // Inset slightly outward so the glow frames the touchpad instead of hiding under it.
+        let inset = 2.0 * l.scale
+        let minX = l.tpMinX * w - inset, maxX = l.tpMaxX * w + inset
+        let minY = l.tpMinY * h - inset, maxY = l.tpMaxY * h + inset
+        var path = Path()
+        path.move(to: CGPoint(x: minX, y: minY + r))
+        path.addLine(to: CGPoint(x: minX, y: maxY - r))
+        path.addQuadCurve(to: CGPoint(x: minX + r, y: maxY), control: CGPoint(x: minX, y: maxY))
+        path.addLine(to: CGPoint(x: maxX - r, y: maxY))
+        path.addQuadCurve(to: CGPoint(x: maxX, y: maxY - r), control: CGPoint(x: maxX, y: maxY))
+        path.addLine(to: CGPoint(x: maxX, y: minY + r))
         return path
     }
 }

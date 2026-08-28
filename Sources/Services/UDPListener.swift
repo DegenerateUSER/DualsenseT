@@ -271,7 +271,7 @@ public class UDPListener: ObservableObject {
             let p0 = params.count > 0 ? Float(params[0]) / 255.0 : 0.0
             let p2 = params.count > 2 ? Float(params[2]) / 255.0 : 0.5
             let p3 = params.count > 3 ? Float(params[3]) / 255.0 : 0.5
-            tMode = .vibration
+            tMode = .multiPositionVibration
             start = p0
             amplitude = p2
             frequency = p3
@@ -280,7 +280,7 @@ public class UDPListener: ObservableObject {
             let p0 = params.count > 0 ? Float(params[0]) / 255.0 : 0.0
             let p1 = params.count > 1 ? Float(params[1]) / 255.0 : 0.5
             let p2 = params.count > 2 ? Float(params[2]) / 255.0 : 0.5
-            tMode = .weapon
+            tMode = .semiAutomatic
             start = p0
             end = max(p0 + 0.05, p1)
             strength = p2
@@ -289,18 +289,18 @@ public class UDPListener: ObservableObject {
             let p0 = params.count > 0 ? Float(params[0]) / 255.0 : 0.0
             let p1 = params.count > 1 ? Float(params[1]) / 255.0 : 0.5
             let p2 = params.count > 2 ? Float(params[2]) / 255.0 : 0.5
-            tMode = .weapon
+            tMode = .automatic
             start = p0
             end = max(p0 + 0.05, p1)
             strength = p2
+            frequency = 0.3
             
         case 9: // Choppy
             let p0 = params.count > 0 ? Float(params[0]) / 255.0 : 0.0
             let p2 = params.count > 2 ? Float(params[2]) / 255.0 : 0.5
-            tMode = .vibration
+            tMode = .multiPositionFeedback
             start = p0
-            amplitude = p2
-            frequency = 0.5
+            strength = p2
             
         case 10: // VerySoft
             tMode = .feedback
@@ -333,9 +333,7 @@ public class UDPListener: ObservableObject {
             strength = 1.0
             
         case 16: // Rigid
-            tMode = .feedback
-            start = 0.0
-            strength = 1.0
+            tMode = .fullPress
             
         case 17: // VibrateTriggerPulse
             tMode = .vibration
@@ -381,6 +379,13 @@ public class UDPListener: ObservableObject {
         case 1: tMode = .feedback
         case 2: tMode = .weapon
         case 3: tMode = .vibration
+        case 4: tMode = .sectionResistance
+        case 5: tMode = .semiAutomatic
+        case 6: tMode = .automatic
+        case 7: tMode = .slopeFeedback
+        case 8: tMode = .multiPositionFeedback
+        case 9: tMode = .multiPositionVibration
+        case 10: tMode = .fullPress
         default: tMode = .off
         }
         

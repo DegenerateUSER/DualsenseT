@@ -13,6 +13,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     
     public func applicationDidFinishLaunching(_ notification: Notification) {
         GCController.shouldMonitorBackgroundEvents = true
+        #if !TESTING
         NSApp.setActivationPolicy(.accessory)
         setupMenuBar()
         showMainWindow()
@@ -21,6 +22,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if UserDefaults.standard.bool(forKey: "autoStartUdp") {
             udpListener.start(manager: controllerManager)
         }
+        #endif
         
         // Setup App Profile Observer
         controllerManager.setupAppProfileObserver(presetManager: presetManager)
@@ -41,12 +43,33 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             guard let self = self else { return }
             logToFile("Application resigned active. Switching to raw HID output mode.")
             self.controllerManager.isAppInForeground = false
-            // Immediately send raw HID report to override the OS reset
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                self.controllerManager.applyTriggerSettingsViaHID()
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                self.controllerManager.applyTriggerSettingsViaHID()
+            // Send aggressive exponential backoff burst to win the race against OS resets
+            #if TESTING
+            self.controllerManager.applyTriggerSettingsViaHID()
+            #else
+            self.controllerManager.sendBackgroundBurst()
+            #endif
+        }
+        
+        // Fallback: observe workspace-level app activations (more reliable for .accessory apps)
+        // NSApplication.didResignActiveNotification may not fire for apps without a dock icon,
+        // so we also watch when ANY other app becomes frontmost.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self = self else { return }
+            // If the activated app is NOT us, we've lost focus
+            if let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+               app.bundleIdentifier != Bundle.main.bundleIdentifier {
+                if self.controllerManager.isAppInForeground {
+                    logToFile("Workspace observer: another app activated (\(app.localizedName ?? "unknown")). Switching to raw HID.")
+                    self.controllerManager.isAppInForeground = false
+                    #if !TESTING
+                    self.controllerManager.sendBackgroundBurst()
+                    #endif
+                }
             }
         }
         
@@ -65,18 +88,15 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     public func setupMenuBar() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem?.button {
-            let config = NSImage.SymbolConfiguration(scale: .medium)
-            button.image = NSImage(systemSymbolName: "gamecontroller", accessibilityDescription: "DualSenseT")?.withSymbolConfiguration(config)
             button.imagePosition = .imageLeft
-            button.title = " --%"
         }
-        updateMenu()
+        statusChanged()
     }
     
     public func updateMenu() {
         let menu = NSMenu()
         
-        if controllerManager.activeController != nil {
+        if controllerManager.isConnected {
             let infoItem = NSMenuItem(title: "DualSense Connection: Connected (\(controllerManager.connectionType))", action: nil, keyEquivalent: "")
             menu.addItem(infoItem)
             
@@ -120,9 +140,19 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             if let button = self.statusItem?.button {
-                if self.controllerManager.activeController != nil {
-                    button.title = String(format: " [%@] %.0f%%", self.controllerManager.connectionType, self.controllerManager.batteryLevel * 100)
+                if self.controllerManager.isConnected {
+                    if self.controllerManager.connectionType == "USB" {
+                        button.image = MenuIconHelper.createUSBIcon()
+                    } else if self.controllerManager.connectionType == "BT" {
+                        button.image = MenuIconHelper.createBluetoothIcon()
+                    } else {
+                        let config = NSImage.SymbolConfiguration(scale: .medium)
+                        button.image = NSImage(systemSymbolName: "gamecontroller", accessibilityDescription: "DualSenseT")?.withSymbolConfiguration(config)
+                    }
+                    button.title = String(format: " %.0f%%", self.controllerManager.batteryLevel * 100)
                 } else {
+                    let config = NSImage.SymbolConfiguration(scale: .medium)
+                    button.image = NSImage(systemSymbolName: "gamecontroller", accessibilityDescription: "DualSenseT")?.withSymbolConfiguration(config)
                     button.title = " --%"
                 }
             }
@@ -183,5 +213,9 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     
     @objc public func quitApp() {
         NSApplication.shared.terminate(nil)
+    }
+
+    public func applicationWillTerminate(_ notification: Notification) {
+        controllerManager.shutdown()
     }
 }

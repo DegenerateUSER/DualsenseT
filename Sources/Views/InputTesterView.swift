@@ -74,7 +74,7 @@ public struct InputTesterView: View {
                     .font(.title2)
                     .fontWeight(.bold)
                 
-                if manager.activeController != nil {
+                if manager.isConnected {
                     HStack(alignment: .top, spacing: 16) {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Analog Sticks")
