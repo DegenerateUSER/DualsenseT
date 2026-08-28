@@ -16,6 +16,17 @@ public final class SystemAudioCaptureService: NSObject, ObservableObject {
     )
     private var captureStream: SCStream?
     private var lastLevelDelivery: UInt64 = 0
+    private let sampleHandlerLock = NSLock()
+    private var sampleHandler: ((CMSampleBuffer) -> Void)?
+    private var hasLoggedAudioFormat = false
+
+    /// Installs the synchronous consumer used by the haptic DSP. The callback runs on
+    /// `audioQueue`; it must copy or consume the sample before returning.
+    public func setSampleHandler(_ handler: ((CMSampleBuffer) -> Void)?) {
+        sampleHandlerLock.lock()
+        sampleHandler = handler
+        sampleHandlerLock.unlock()
+    }
 
     public func start() {
         guard !isCapturing, !isStarting else { return }
@@ -160,6 +171,25 @@ public final class SystemAudioCaptureService: NSObject, ObservableObject {
             self.level = self.level * 0.68 + meter * 0.32
         }
     }
+
+    private func deliverToProcessor(_ sampleBuffer: CMSampleBuffer) {
+        sampleHandlerLock.lock()
+        let handler = sampleHandler
+        sampleHandlerLock.unlock()
+        handler?(sampleBuffer)
+    }
+
+    private func logAudioFormatOnce(_ sampleBuffer: CMSampleBuffer) {
+        guard !hasLoggedAudioFormat,
+              let description = CMSampleBufferGetFormatDescription(sampleBuffer),
+              let format = CMAudioFormatDescriptionGetStreamBasicDescription(description)?.pointee else {
+            return
+        }
+        hasLoggedAudioFormat = true
+        logToFile(
+            "SystemAudioCaptureService: format id=\(format.mFormatID), flags=0x\(String(format: "%08X", format.mFormatFlags)), rate=\(Int(format.mSampleRate)), channels=\(format.mChannelsPerFrame), bytesPerFrame=\(format.mBytesPerFrame), framesPerPacket=\(format.mFramesPerPacket)"
+        )
+    }
 }
 
 extension SystemAudioCaptureService: SCStreamOutput, SCStreamDelegate {
@@ -169,7 +199,9 @@ extension SystemAudioCaptureService: SCStreamOutput, SCStreamDelegate {
         of outputType: SCStreamOutputType
     ) {
         guard outputType == .audio else { return }
+        logAudioFormatOnce(sampleBuffer)
         processLevel(sampleBuffer)
+        deliverToProcessor(sampleBuffer)
     }
 
     public func stream(_ stream: SCStream, didStopWithError error: Error) {

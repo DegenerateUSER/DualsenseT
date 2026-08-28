@@ -236,6 +236,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     public func applicationWillTerminate(_ notification: Notification) {
         systemAudioCaptureService.stop()
+        controllerAudioService.stopAudioHaptics()
         controllerAudioService.stopTestTone()
         controllerManager.shutdown()
     }

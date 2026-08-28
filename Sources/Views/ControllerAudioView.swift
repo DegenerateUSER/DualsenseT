@@ -6,6 +6,7 @@ public struct ControllerAudioView: View {
     @ObservedObject var manager: ControllerManager
     @State private var hapticsStartWorkItem: DispatchWorkItem?
     @State private var hapticsRestoreWorkItem: DispatchWorkItem?
+    @State private var streamStartWorkItem: DispatchWorkItem?
 
     public init(
         service: ControllerAudioService,
@@ -59,7 +60,7 @@ public struct ControllerAudioView: View {
         }
         .onDisappear {
             stopChannelTest()
-            captureService.stop()
+            stopAudioHaptics()
         }
     }
 
@@ -102,26 +103,47 @@ public struct ControllerAudioView: View {
         manager.audioHapticsModeEnabled = false
     }
 
+    private func startAudioHaptics() {
+        stopChannelTest()
+        streamStartWorkItem?.cancel()
+        manager.audioHapticsModeEnabled = true
+
+        let start = DispatchWorkItem {
+            streamStartWorkItem = nil
+            service.startAudioHaptics(captureService: captureService)
+        }
+        streamStartWorkItem = start
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: start)
+    }
+
+    private func stopAudioHaptics() {
+        streamStartWorkItem?.cancel()
+        streamStartWorkItem = nil
+        service.stopAudioHaptics()
+        captureService.stop()
+        manager.audioHapticsModeEnabled = false
+    }
+
     private var captureValidationCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("System Audio Capture")
+                    Text("Audio Haptics")
                         .font(.headline)
-                    Text("Validation stage—audio is metered locally but not sent to the controller yet.")
+                    Text("Convert game, music, and video audio into independent left/right grip feedback.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
                 Spacer()
-                if captureService.isCapturing {
-                    Button("Stop Capture") {
-                        captureService.stop()
+                if service.isAudioHapticsRunning {
+                    Button("Stop Haptics") {
+                        stopAudioHaptics()
                     }
                     .buttonStyle(.bordered)
                     .tint(.red)
                 } else {
-                    Button(captureService.isStarting ? "Starting…" : "Start Capture") {
-                        captureService.start()
+                    Button(captureService.isStarting ? "Starting…" : "Start Audio Haptics") {
+                        startAudioHaptics()
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(captureService.isStarting)
@@ -139,15 +161,31 @@ public struct ControllerAudioView: View {
             }
             .frame(height: 10)
 
+            HStack(spacing: 12) {
+                Image(systemName: "waveform.path")
+                    .foregroundColor(.cyan)
+                    .frame(width: 20)
+                Text("Haptic Intensity")
+                    .font(.subheadline)
+                    .frame(width: 132, alignment: .leading)
+                Slider(value: $service.audioHapticsIntensity, in: 0...1)
+                Text("\(Int(round(service.audioHapticsIntensity * 100)))%")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .frame(width: 38, alignment: .trailing)
+            }
+
             HStack {
                 Label(
-                    captureService.statusMessage,
-                    systemImage: captureService.isCapturing
+                    service.isAudioHapticsRunning
+                        ? service.audioHapticsStatus
+                        : captureService.statusMessage,
+                    systemImage: service.isAudioHapticsRunning
                         ? "waveform.circle.fill"
                         : "record.circle"
                 )
                 .font(.subheadline)
-                .foregroundColor(captureService.isCapturing ? .cyan : .secondary)
+                .foregroundColor(service.isAudioHapticsRunning ? .cyan : .secondary)
                 Spacer()
                 Text("\(Int(captureService.level * 100))%")
                     .font(.system(.caption, design: .monospaced))
@@ -158,8 +196,12 @@ public struct ControllerAudioView: View {
                 Text(error)
                     .font(.caption)
                     .foregroundColor(.red)
-            } else if captureService.isCapturing {
-                Text("Play music, a video, or a game. The cyan meter should follow the system audio level.")
+            } else if let error = service.lastError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundColor(.red)
+            } else if service.isAudioHapticsRunning {
+                Text("Play music, a video, or a game. Bass and transients are streamed to the left/right haptic actuators; your normal Mac audio output is unchanged.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -474,8 +516,8 @@ public struct ControllerAudioView: View {
             StageRow(number: 1, title: "USB discovery & Quadraphonic setup", state: .complete)
             StageRow(number: 2, title: "Speaker, headset and microphone controls", state: .complete)
             StageRow(number: 3, title: "Per-channel audio output tests", state: .complete)
-            StageRow(number: 4, title: "Permission-aware system audio capture", state: .next)
-            StageRow(number: 5, title: "Audio-to-haptics DSP and streaming", state: .planned)
+            StageRow(number: 4, title: "Permission-aware system audio capture", state: .complete)
+            StageRow(number: 5, title: "Audio-to-haptics DSP and streaming", state: .next)
         }
         .padding()
         .background(Color.white.opacity(0.035))

@@ -3,6 +3,7 @@ import Combine
 import CoreAudio
 import AudioToolbox
 import AVFAudio
+import CoreMedia
 
 public enum ControllerAudioOutputRoute: UInt8, CaseIterable, Identifiable {
     case headphones = 0x00
@@ -74,10 +75,21 @@ public final class ControllerAudioService: ObservableObject {
     @Published public private(set) var lastError: String?
     @Published public private(set) var isRefreshing = false
     @Published public private(set) var activeTestChannel: Int?
+    @Published public private(set) var isAudioHapticsRunning = false
+    @Published public private(set) var audioHapticsStatus = "Audio haptics are stopped."
+    @Published public var audioHapticsIntensity: Double = 0.72
 
     private var testEngine: AVAudioEngine?
     private var testSourceNode: AVAudioSourceNode?
     private var testStopWorkItem: DispatchWorkItem?
+    private var hapticsEngine: AVAudioEngine?
+    private var hapticsPlayer: AVAudioPlayerNode?
+    private var hapticsFormat: AVAudioFormat?
+    private weak var hapticsCaptureService: SystemAudioCaptureService?
+    private let scheduledBufferLock = NSLock()
+    private var scheduledBufferCount = 0
+    private var hapticLowPassHigh: (Float, Float) = (0, 0)
+    private var hapticLowPassLow: (Float, Float) = (0, 0)
 
     public init() {
         refresh()
@@ -401,6 +413,211 @@ public final class ControllerAudioService: ObservableObject {
                 ? "DualSense USB audio is ready for four-channel output."
                 : "Channel test stopped."
         }
+    }
+
+    public func startAudioHaptics(captureService: SystemAudioCaptureService) {
+        guard !isAudioHapticsRunning else { return }
+        stopTestTone()
+
+        guard let info = deviceInfo else {
+            lastError = "Connect a DualSense controller through USB first."
+            return
+        }
+        guard info.isQuadraphonic else {
+            lastError = "Configure Quadraphonic output before starting audio haptics."
+            return
+        }
+
+        let engine = AVAudioEngine()
+        let player = AVAudioPlayerNode()
+        let outputNode = engine.outputNode
+        guard let outputUnit = outputNode.audioUnit else {
+            lastError = "CoreAudio did not create a haptic output AudioUnit."
+            return
+        }
+
+        var outputDeviceID = info.outputDeviceID
+        let deviceStatus = AudioUnitSetProperty(
+            outputUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &outputDeviceID,
+            UInt32(MemoryLayout<AudioDeviceID>.size)
+        )
+        guard deviceStatus == noErr else {
+            lastError = "Could not select the DualSense haptic output (\(Self.describe(deviceStatus)))."
+            return
+        }
+
+        guard let layout = AVAudioChannelLayout(
+            layoutTag: kAudioChannelLayoutTag_Quadraphonic
+        ) else {
+            lastError = "Could not create the Quadraphonic haptic layout."
+            return
+        }
+        let format = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: 48_000,
+            interleaved: false,
+            channelLayout: layout
+        )
+
+        engine.attach(player)
+        engine.connect(player, to: outputNode, format: format)
+        engine.prepare()
+        do {
+            try engine.start()
+        } catch {
+            lastError = "Could not start the haptic output engine: \(error.localizedDescription)"
+            return
+        }
+        player.play()
+
+        hapticLowPassHigh = (0, 0)
+        hapticLowPassLow = (0, 0)
+        scheduledBufferCount = 0
+        hapticsEngine = engine
+        hapticsPlayer = player
+        hapticsFormat = format
+        hapticsCaptureService = captureService
+        captureService.setSampleHandler { [weak self] sampleBuffer in
+            self?.processAudioHaptics(sampleBuffer)
+        }
+        if !captureService.isCapturing {
+            captureService.start()
+        }
+
+        isAudioHapticsRunning = true
+        audioHapticsStatus = "Streaming system audio to haptic channels 3 and 4."
+        lastError = nil
+        logToFile("ControllerAudioService: audio haptics started on AudioDeviceID \(info.outputDeviceID).")
+    }
+
+    public func stopAudioHaptics() {
+        hapticsCaptureService?.setSampleHandler(nil)
+        hapticsCaptureService = nil
+        hapticsPlayer?.stop()
+        hapticsEngine?.stop()
+        hapticsEngine?.reset()
+        hapticsPlayer = nil
+        hapticsEngine = nil
+        hapticsFormat = nil
+        scheduledBufferLock.lock()
+        scheduledBufferCount = 0
+        scheduledBufferLock.unlock()
+        if isAudioHapticsRunning {
+            logToFile("ControllerAudioService: audio haptics stopped.")
+        }
+        isAudioHapticsRunning = false
+        audioHapticsStatus = "Audio haptics are stopped."
+    }
+
+    private func processAudioHaptics(_ sampleBuffer: CMSampleBuffer) {
+        guard isAudioHapticsRunning,
+              let player = hapticsPlayer,
+              let format = hapticsFormat,
+              let description = CMSampleBufferGetFormatDescription(sampleBuffer),
+              let inputFormat = CMAudioFormatDescriptionGetStreamBasicDescription(description)?.pointee,
+              inputFormat.mFormatID == kAudioFormatLinearPCM,
+              (inputFormat.mFormatFlags & kAudioFormatFlagIsFloat) != 0,
+              inputFormat.mBitsPerChannel == 32,
+              let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else {
+            return
+        }
+
+        scheduledBufferLock.lock()
+        let queueIsFull = scheduledBufferCount >= 12
+        if !queueIsFull {
+            scheduledBufferCount += 1
+        }
+        scheduledBufferLock.unlock()
+        guard !queueIsFull else { return }
+
+        let frameCount = CMSampleBufferGetNumSamples(sampleBuffer)
+        guard frameCount > 0,
+              let outputBuffer = AVAudioPCMBuffer(
+                pcmFormat: format,
+                frameCapacity: AVAudioFrameCount(frameCount)
+              ),
+              let outputChannels = outputBuffer.floatChannelData else {
+            decrementScheduledBufferCount()
+            return
+        }
+
+        var lengthAtOffset = 0
+        var totalLength = 0
+        var rawData: UnsafeMutablePointer<Int8>?
+        guard CMBlockBufferGetDataPointer(
+            blockBuffer,
+            atOffset: 0,
+            lengthAtOffsetOut: &lengthAtOffset,
+            totalLengthOut: &totalLength,
+            dataPointerOut: &rawData
+        ) == kCMBlockBufferNoErr,
+        let rawData else {
+            decrementScheduledBufferCount()
+            return
+        }
+
+        let inputChannels = max(1, Int(inputFormat.mChannelsPerFrame))
+        let requiredSamples = frameCount * inputChannels
+        guard totalLength >= requiredSamples * MemoryLayout<Float>.size else {
+            decrementScheduledBufferCount()
+            return
+        }
+
+        outputBuffer.frameLength = AVAudioFrameCount(frameCount)
+        for channel in 0..<4 {
+            memset(outputChannels[channel], 0, frameCount * MemoryLayout<Float>.size)
+        }
+
+        let input = UnsafeRawPointer(rawData).assumingMemoryBound(to: Float.self)
+        let nonInterleaved =
+            (inputFormat.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0
+        let intensity = Float(max(0, min(1, audioHapticsIntensity)))
+        let gain = 4.0 + intensity * 14.0
+        // Difference between 220 Hz and 20 Hz one-pole low passes gives a stable
+        // bass/transient band while removing DC and harsh high-frequency content.
+        let highAlpha: Float = 0.02839
+        let lowAlpha: Float = 0.002615
+
+        var highL = hapticLowPassHigh.0
+        var highR = hapticLowPassHigh.1
+        var lowL = hapticLowPassLow.0
+        var lowR = hapticLowPassLow.1
+
+        for frame in 0..<frameCount {
+            let left: Float
+            let right: Float
+            if nonInterleaved {
+                left = input[frame]
+                right = inputChannels > 1 ? input[frameCount + frame] : left
+            } else {
+                left = input[frame * inputChannels]
+                right = inputChannels > 1 ? input[frame * inputChannels + 1] : left
+            }
+
+            highL += highAlpha * (left - highL)
+            highR += highAlpha * (right - highR)
+            lowL += lowAlpha * (left - lowL)
+            lowR += lowAlpha * (right - lowR)
+
+            outputChannels[2][frame] = max(-1, min(1, (highL - lowL) * gain))
+            outputChannels[3][frame] = max(-1, min(1, (highR - lowR) * gain))
+        }
+
+        hapticLowPassHigh = (highL, highR)
+        hapticLowPassLow = (lowL, lowR)
+        player.scheduleBuffer(outputBuffer) { [weak self] in
+            self?.decrementScheduledBufferCount()
+        }
+    }
+
+    private func decrementScheduledBufferCount() {
+        scheduledBufferLock.lock()
+        scheduledBufferCount = max(0, scheduledBufferCount - 1)
+        scheduledBufferLock.unlock()
     }
 
     private static func allAudioDeviceIDs() -> [AudioDeviceID]? {
