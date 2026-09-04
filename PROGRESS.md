@@ -2,7 +2,7 @@
 
 > **Purpose:** This file tracks what has been done, what is in progress, and what remains.  
 > If a session ends mid-task, the next session should read this file FIRST to resume seamlessly.  
-> **Last Updated:** 28/08/2026 18:12 IST
+> **Last Updated:** 04/09/2026 18:02 IST
 
 ---
 
@@ -16,7 +16,48 @@ The high-rate input/UI path has since been optimized without changing HID output
 USB controller audio controls, system-audio capture, and audio-to-haptics streaming are now
 implemented. Speaker, microphone, isolated haptic channels, capture meter, and streamed video
 haptics worked on physical hardware. The tab-switch/adaptive-trigger coexistence fix is
-implemented but deferred for user retest. Test suite: **70/70 passing**.
+implemented but deferred for user retest. A macOS 27 Golden Gate cross-device PCM layout
+failure has now been isolated and fixed using CoreMedia's AudioBufferList API; remote retest
+is pending. Test suite: **71/71 passing**.
+
+---
+
+## 🔊 Session: Golden Gate Audio Buffer Compatibility (04/09/2026)
+
+**Remote environment:** base M1 MacBook Air running macOS 27 Golden Gate beta. Development
+changes are pushed and tested on that separate machine; its app log is not available locally.
+
+**Observed**
+- [x] All old controller features still work.
+- [x] Isolated Haptic L/R tests vibrate the grips.
+- [x] System capture meter moves with video audio.
+- [ ] Streamed video audio produces no haptic vibration.
+
+These results prove the controller's Quadraphonic output, PCM mode, haptic channels, and
+ScreenCaptureKit capture work. The failing boundary is captured PCM buffer unpacking before
+the DSP.
+
+**Root cause:** `processAudioHaptics` used `CMSampleBufferGetDataBuffer` and assumed one
+contiguous Float32 block. Golden Gate can expose stereo as separate planar `AudioBuffer`
+entries. A raw byte meter can still move while channel offsets consumed by the DSP are wrong
+or rejected.
+
+**Fix implemented**
+- Switched capture meter and haptic DSP to `CMSampleBuffer.withAudioBufferList`.
+- Added logical-channel traversal using each buffer's channel count, data length, and pointer.
+- Handles planar stereo, interleaved stereo, mono duplication, and mixed channel groups.
+- Added visible remote diagnostics: captured level, processed haptic level, processed/dropped
+  counts, and exact input layout.
+- Added `testAudioBufferListDecodesPlanarAndInterleavedStereo`.
+- **71/71 tests pass; full app bundle builds.**
+
+**Next remote test**
+- [ ] Both captured and processed meters move.
+- [ ] Processed count rises; dropped count stays low.
+- [ ] Controller vibrates with video audio.
+- [ ] Record the displayed PCM-format line.
+
+See `USB_AUDIO_HAPTICS.md` §10 for the full evidence chain and test procedure.
 
 ---
 

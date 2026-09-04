@@ -1035,6 +1035,17 @@ class TestSuite {
             try XCTAssertEqual(SystemAudioCaptureService.meterLevel(forRMS: 0.5), 1)
         }
 
+        runTest(name: "testAudioBufferListDecodesPlanarAndInterleavedStereo") {
+            let expected: [Float] = [0.1, -0.1, 0.2, -0.2, 0.3, -0.3]
+            let planar = ControllerAudioService.testDecodePlanarStereo(
+                left: [0.1, 0.2, 0.3],
+                right: [-0.1, -0.2, -0.3]
+            )
+            let interleaved = ControllerAudioService.testDecodeInterleavedStereo(expected)
+            try XCTAssertEqual(planar, expected)
+            try XCTAssertEqual(interleaved, expected)
+        }
+
         runTest(name: "testBTInputReportRejectsShortBuffer") {
             let short = [UInt8](repeating: 0, count: 40)
             try XCTAssertNil(BluetoothHIDController.parseInputReport(short))

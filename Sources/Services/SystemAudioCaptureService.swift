@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import ScreenCaptureKit
 import CoreMedia
+import CoreAudio
 
 public final class SystemAudioCaptureService: NSObject, ObservableObject {
     @Published public private(set) var isCapturing = false
@@ -122,40 +123,37 @@ public final class SystemAudioCaptureService: NSObject, ObservableObject {
     }
 
     private func processLevel(_ sampleBuffer: CMSampleBuffer) {
-        guard sampleBuffer.isValid,
-              let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else {
-            return
-        }
+        guard sampleBuffer.isValid else { return }
 
-        var lengthAtOffset = 0
-        var totalLength = 0
-        var dataPointer: UnsafeMutablePointer<Int8>?
-        guard CMBlockBufferGetDataPointer(
-            blockBuffer,
-            atOffset: 0,
-            lengthAtOffsetOut: &lengthAtOffset,
-            totalLengthOut: &totalLength,
-            dataPointerOut: &dataPointer
-        ) == kCMBlockBufferNoErr,
-        let dataPointer,
-        totalLength >= MemoryLayout<Float>.size else {
-            return
-        }
-
-        let samples = UnsafeRawPointer(dataPointer).assumingMemoryBound(to: Float.self)
-        let sampleCount = totalLength / MemoryLayout<Float>.size
-        let stride = max(1, sampleCount / 2_048)
         var sumSquares: Double = 0
         var measuredCount = 0
-        var index = 0
-        while index < sampleCount {
-            let sample = samples[index]
-            if sample.isFinite {
-                sumSquares += Double(sample * sample)
-                measuredCount += 1
+
+        do {
+            try sampleBuffer.withAudioBufferList { buffers, _ in
+                let perBufferBudget = max(1, 2_048 / max(1, buffers.count))
+                for buffer in buffers {
+                    guard let samples = buffer.mData?
+                        .assumingMemoryBound(to: Float.self) else {
+                        continue
+                    }
+                    let sampleCount =
+                        Int(buffer.mDataByteSize) / MemoryLayout<Float>.size
+                    let sampleStride = max(1, sampleCount / perBufferBudget)
+                    var index = 0
+                    while index < sampleCount {
+                        let sample = samples[index]
+                        if sample.isFinite {
+                            sumSquares += Double(sample * sample)
+                            measuredCount += 1
+                        }
+                        index += sampleStride
+                    }
+                }
             }
-            index += stride
+        } catch {
+            return
         }
+
         guard measuredCount > 0 else { return }
 
         let rms = Float(sqrt(sumSquares / Double(measuredCount)))

@@ -154,6 +154,16 @@ public struct ControllerAudioView: View {
                 }
             }
 
+            HStack {
+                Text("Captured Audio")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text("\(Int(captureService.level * 100))%")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
                     Capsule()
@@ -180,6 +190,27 @@ public struct ControllerAudioView: View {
             }
 
             HStack {
+                Text("Processed Haptic Output")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text("\(Int(service.hapticOutputLevel * 100))%")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.black.opacity(0.22))
+                    Capsule()
+                        .fill(service.hapticOutputLevel > 0.001 ? Color.green : Color.secondary)
+                        .frame(width: geometry.size.width * CGFloat(service.hapticOutputLevel))
+                }
+            }
+            .frame(height: 10)
+
+            HStack {
                 Label(
                     service.isAudioHapticsRunning
                         ? service.audioHapticsStatus
@@ -190,10 +221,20 @@ public struct ControllerAudioView: View {
                 )
                 .font(.subheadline)
                 .foregroundColor(service.isAudioHapticsRunning ? .cyan : .secondary)
-                Spacer()
-                Text("\(Int(captureService.level * 100))%")
-                    .font(.system(.caption, design: .monospaced))
+            }
+
+            if service.isAudioHapticsRunning {
+                HStack(spacing: 16) {
+                    Text("Processed: \(service.hapticProcessedBuffers)")
+                    Text("Dropped: \(service.hapticDroppedBuffers)")
+                }
+                .font(.system(.caption, design: .monospaced))
+                .foregroundColor(.secondary)
+
+                Text(service.hapticInputFormat)
+                    .font(.system(.caption2, design: .monospaced))
                     .foregroundColor(.secondary)
+                    .textSelection(.enabled)
             }
 
             if let error = captureService.lastError {

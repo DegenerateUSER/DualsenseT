@@ -78,6 +78,10 @@ public final class ControllerAudioService: ObservableObject {
     @Published public private(set) var isAudioHapticsRunning = false
     @Published public private(set) var audioHapticsStatus = "Audio haptics are stopped."
     @Published public var audioHapticsIntensity: Double = 0.72
+    @Published public private(set) var hapticInputFormat = "Waiting for captured PCM…"
+    @Published public private(set) var hapticProcessedBuffers = 0
+    @Published public private(set) var hapticDroppedBuffers = 0
+    @Published public private(set) var hapticOutputLevel: Float = 0
 
     private var testEngine: AVAudioEngine?
     private var testSourceNode: AVAudioSourceNode?
@@ -90,6 +94,11 @@ public final class ControllerAudioService: ObservableObject {
     private var scheduledBufferCount = 0
     private var hapticLowPassHigh: (Float, Float) = (0, 0)
     private var hapticLowPassLow: (Float, Float) = (0, 0)
+    private var processedBufferCounter = 0
+    private var droppedBufferCounter = 0
+    private var hapticInputFormatSnapshot = "Waiting for captured PCM…"
+    private var lastHapticDiagnosticsDelivery: UInt64 = 0
+    private var hasReportedHapticPipelineError = false
 
     public init() {
         refresh()
@@ -477,6 +486,15 @@ public final class ControllerAudioService: ObservableObject {
         hapticLowPassHigh = (0, 0)
         hapticLowPassLow = (0, 0)
         scheduledBufferCount = 0
+        processedBufferCounter = 0
+        droppedBufferCounter = 0
+        hapticInputFormatSnapshot = "Waiting for captured PCM…"
+        lastHapticDiagnosticsDelivery = 0
+        hasReportedHapticPipelineError = false
+        hapticInputFormat = hapticInputFormatSnapshot
+        hapticProcessedBuffers = 0
+        hapticDroppedBuffers = 0
+        hapticOutputLevel = 0
         hapticsEngine = engine
         hapticsPlayer = player
         hapticsFormat = format
@@ -511,6 +529,7 @@ public final class ControllerAudioService: ObservableObject {
         }
         isAudioHapticsRunning = false
         audioHapticsStatus = "Audio haptics are stopped."
+        hapticOutputLevel = 0
     }
 
     private func processAudioHaptics(_ sampleBuffer: CMSampleBuffer) {
@@ -521,8 +540,10 @@ public final class ControllerAudioService: ObservableObject {
               let inputFormat = CMAudioFormatDescriptionGetStreamBasicDescription(description)?.pointee,
               inputFormat.mFormatID == kAudioFormatLinearPCM,
               (inputFormat.mFormatFlags & kAudioFormatFlagIsFloat) != 0,
-              inputFormat.mBitsPerChannel == 32,
-              let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else {
+              inputFormat.mBitsPerChannel == 32 else {
+            reportHapticPipelineError(
+                "Captured audio is not 32-bit Float PCM; streaming cannot continue."
+            )
             return
         }
 
@@ -532,7 +553,11 @@ public final class ControllerAudioService: ObservableObject {
             scheduledBufferCount += 1
         }
         scheduledBufferLock.unlock()
-        guard !queueIsFull else { return }
+        guard !queueIsFull else {
+            droppedBufferCounter += 1
+            publishHapticDiagnostics(outputPeak: 0)
+            return
+        }
 
         let frameCount = CMSampleBufferGetNumSamples(sampleBuffer)
         guard frameCount > 0,
@@ -545,36 +570,10 @@ public final class ControllerAudioService: ObservableObject {
             return
         }
 
-        var lengthAtOffset = 0
-        var totalLength = 0
-        var rawData: UnsafeMutablePointer<Int8>?
-        guard CMBlockBufferGetDataPointer(
-            blockBuffer,
-            atOffset: 0,
-            lengthAtOffsetOut: &lengthAtOffset,
-            totalLengthOut: &totalLength,
-            dataPointerOut: &rawData
-        ) == kCMBlockBufferNoErr,
-        let rawData else {
-            decrementScheduledBufferCount()
-            return
-        }
-
-        let inputChannels = max(1, Int(inputFormat.mChannelsPerFrame))
-        let requiredSamples = frameCount * inputChannels
-        guard totalLength >= requiredSamples * MemoryLayout<Float>.size else {
-            decrementScheduledBufferCount()
-            return
-        }
-
-        outputBuffer.frameLength = AVAudioFrameCount(frameCount)
         for channel in 0..<4 {
             memset(outputChannels[channel], 0, frameCount * MemoryLayout<Float>.size)
         }
 
-        let input = UnsafeRawPointer(rawData).assumingMemoryBound(to: Float.self)
-        let nonInterleaved =
-            (inputFormat.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0
         let intensity = Float(max(0, min(1, audioHapticsIntensity)))
         let gain = 4.0 + intensity * 14.0
         // Difference between 220 Hz and 20 Hz one-pole low passes gives a stable
@@ -586,31 +585,205 @@ public final class ControllerAudioService: ObservableObject {
         var highR = hapticLowPassHigh.1
         var lowL = hapticLowPassLow.0
         var lowR = hapticLowPassLow.1
+        var outputPeak: Float = 0
+        let processedFrames: Int
 
-        for frame in 0..<frameCount {
-            let left: Float
-            let right: Float
-            if nonInterleaved {
-                left = input[frame]
-                right = inputChannels > 1 ? input[frameCount + frame] : left
-            } else {
-                left = input[frame * inputChannels]
-                right = inputChannels > 1 ? input[frame * inputChannels + 1] : left
+        do {
+            processedFrames = try sampleBuffer.withAudioBufferList {
+                inputBuffers, _ -> Int in
+                if hapticInputFormatSnapshot == "Waiting for captured PCM…" {
+                    let channelGroups = inputBuffers.map {
+                        String($0.mNumberChannels)
+                    }.joined(separator: "+")
+                    let planar = inputBuffers.count > 1 ? "planar" : "interleaved"
+                    hapticInputFormatSnapshot =
+                        "\(Int(inputFormat.mSampleRate)) Hz Float32 · \(inputFormat.mChannelsPerFrame) ch · \(planar) buffers \(channelGroups)"
+                    logToFile(
+                        "ControllerAudioService: haptic input \(hapticInputFormatSnapshot)."
+                    )
+                }
+
+                return Self.forEachStereoFrame(
+                    in: inputBuffers,
+                    requestedFrameCount: frameCount
+                ) { frame, left, right in
+                    highL += highAlpha * (left - highL)
+                    highR += highAlpha * (right - highR)
+                    lowL += lowAlpha * (left - lowL)
+                    lowR += lowAlpha * (right - lowR)
+
+                    let hapticLeft = max(-1, min(1, (highL - lowL) * gain))
+                    let hapticRight = max(-1, min(1, (highR - lowR) * gain))
+                    outputChannels[2][frame] = hapticLeft
+                    outputChannels[3][frame] = hapticRight
+                    outputPeak = max(
+                        outputPeak,
+                        max(abs(hapticLeft), abs(hapticRight))
+                    )
+                }
             }
-
-            highL += highAlpha * (left - highL)
-            highR += highAlpha * (right - highR)
-            lowL += lowAlpha * (left - lowL)
-            lowR += lowAlpha * (right - lowR)
-
-            outputChannels[2][frame] = max(-1, min(1, (highL - lowL) * gain))
-            outputChannels[3][frame] = max(-1, min(1, (highR - lowR) * gain))
+        } catch {
+            decrementScheduledBufferCount()
+            droppedBufferCounter += 1
+            reportHapticPipelineError(
+                "Could not access captured AudioBufferList: \(error.localizedDescription)"
+            )
+            return
         }
 
+        guard processedFrames > 0 else {
+            decrementScheduledBufferCount()
+            droppedBufferCounter += 1
+            reportHapticPipelineError(
+                "Captured AudioBufferList contained no readable Float32 frames."
+            )
+            return
+        }
+
+        outputBuffer.frameLength = AVAudioFrameCount(processedFrames)
         hapticLowPassHigh = (highL, highR)
         hapticLowPassLow = (lowL, lowR)
+        processedBufferCounter += 1
+        publishHapticDiagnostics(outputPeak: outputPeak)
         player.scheduleBuffer(outputBuffer) { [weak self] in
             self?.decrementScheduledBufferCount()
+        }
+    }
+
+    /// Iterates the first two logical channels using the AudioBufferList as the source of
+    /// truth. This handles one interleaved buffer, separate planar buffers, and mono input.
+    /// The prior CMBlockBuffer-contiguous assumption fails on macOS 27 Golden Gate.
+    private static func forEachStereoFrame(
+        in buffers: UnsafeMutableAudioBufferListPointer,
+        requestedFrameCount: Int,
+        body: (_ frame: Int, _ left: Float, _ right: Float) -> Void
+    ) -> Int {
+        guard requestedFrameCount > 0, !buffers.isEmpty else { return 0 }
+
+        func sample(logicalChannel: Int, frame: Int) -> Float? {
+            var firstLogicalChannel = 0
+            for buffer in buffers {
+                let channelsInBuffer = max(1, Int(buffer.mNumberChannels))
+                let nextLogicalChannel = firstLogicalChannel + channelsInBuffer
+                defer { firstLogicalChannel = nextLogicalChannel }
+                guard logicalChannel >= firstLogicalChannel,
+                      logicalChannel < nextLogicalChannel,
+                      let data = buffer.mData?.assumingMemoryBound(to: Float.self) else {
+                    continue
+                }
+
+                let channelInBuffer = logicalChannel - firstLogicalChannel
+                let sampleIndex = frame * channelsInBuffer + channelInBuffer
+                let availableSamples =
+                    Int(buffer.mDataByteSize) / MemoryLayout<Float>.size
+                guard sampleIndex < availableSamples else { return nil }
+                return data[sampleIndex]
+            }
+            return nil
+        }
+
+        var processed = 0
+        for frame in 0..<requestedFrameCount {
+            guard let left = sample(logicalChannel: 0, frame: frame) else {
+                break
+            }
+            let right = sample(logicalChannel: 1, frame: frame) ?? left
+            guard left.isFinite, right.isFinite else { continue }
+            body(frame, left, right)
+            processed = frame + 1
+        }
+        return processed
+    }
+
+    #if TESTING
+    public static func testDecodePlanarStereo(
+        left: [Float],
+        right: [Float]
+    ) -> [Float] {
+        var left = left
+        var right = right
+        return left.withUnsafeMutableBufferPointer { leftBuffer in
+            right.withUnsafeMutableBufferPointer { rightBuffer in
+                let buffers = AudioBufferList.allocate(maximumBuffers: 2)
+                defer { buffers.unsafeMutablePointer.deallocate() }
+                buffers.unsafeMutablePointer.pointee.mNumberBuffers = 2
+                buffers[0] = AudioBuffer(
+                    mNumberChannels: 1,
+                    mDataByteSize: UInt32(leftBuffer.count * MemoryLayout<Float>.size),
+                    mData: leftBuffer.baseAddress
+                )
+                buffers[1] = AudioBuffer(
+                    mNumberChannels: 1,
+                    mDataByteSize: UInt32(rightBuffer.count * MemoryLayout<Float>.size),
+                    mData: rightBuffer.baseAddress
+                )
+
+                var decoded: [Float] = []
+                _ = forEachStereoFrame(
+                    in: buffers,
+                    requestedFrameCount: min(leftBuffer.count, rightBuffer.count)
+                ) { _, l, r in
+                    decoded.append(l)
+                    decoded.append(r)
+                }
+                return decoded
+            }
+        }
+    }
+
+    public static func testDecodeInterleavedStereo(_ samples: [Float]) -> [Float] {
+        var samples = samples
+        return samples.withUnsafeMutableBufferPointer { sampleBuffer in
+            let buffers = AudioBufferList.allocate(maximumBuffers: 1)
+            defer { buffers.unsafeMutablePointer.deallocate() }
+            buffers.unsafeMutablePointer.pointee.mNumberBuffers = 1
+            buffers[0] = AudioBuffer(
+                mNumberChannels: 2,
+                mDataByteSize: UInt32(sampleBuffer.count * MemoryLayout<Float>.size),
+                mData: sampleBuffer.baseAddress
+            )
+
+            var decoded: [Float] = []
+            _ = forEachStereoFrame(
+                in: buffers,
+                requestedFrameCount: sampleBuffer.count / 2
+            ) { _, l, r in
+                decoded.append(l)
+                decoded.append(r)
+            }
+            return decoded
+        }
+    }
+    #endif
+
+    private func publishHapticDiagnostics(outputPeak: Float) {
+        let now = DispatchTime.now().uptimeNanoseconds
+        guard lastHapticDiagnosticsDelivery == 0
+                || now &- lastHapticDiagnosticsDelivery >= 100_000_000 else {
+            return
+        }
+        lastHapticDiagnosticsDelivery = now
+        let processed = processedBufferCounter
+        let dropped = droppedBufferCounter
+        let inputFormat = hapticInputFormatSnapshot
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isAudioHapticsRunning else { return }
+            self.hapticProcessedBuffers = processed
+            self.hapticDroppedBuffers = dropped
+            self.hapticInputFormat = inputFormat
+            self.hapticOutputLevel =
+                self.hapticOutputLevel * 0.65 + outputPeak * 0.35
+        }
+    }
+
+    private func reportHapticPipelineError(_ message: String) {
+        guard !hasReportedHapticPipelineError else { return }
+        hasReportedHapticPipelineError = true
+        logToFile("ControllerAudioService: \(message)")
+        DispatchQueue.main.async { [weak self] in
+            self?.lastError = message
+            self?.audioHapticsStatus = message
         }
     }
 

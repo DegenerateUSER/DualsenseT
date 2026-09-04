@@ -130,10 +130,13 @@ The Audio tab uses the DualSense USB Audio Class interface. Bluetooth does not e
   permission and shows a live input meter.
 * **Audio Haptics:** Extracts bass/transients from game, music, or video audio and streams
   stereo feedback to the two grip actuators while normal Mac audio continues unchanged.
+* **Portable PCM Layouts:** Reads CoreMedia AudioBufferLists correctly whether ScreenCaptureKit
+  supplies planar, interleaved, or mono Float32 samples.
 
 Hardware verified: Quadraphonic setup, both haptic channels, controller speaker, controller
 microphone, capture meter, and video-driven haptics. Wired headset testing and the latest
-adaptive-trigger coexistence fix remain pending. See `USB_AUDIO_HAPTICS.md`.
+adaptive-trigger coexistence fix remain pending. The macOS 27 Golden Gate planar-buffer fix
+also awaits remote retest. See `USB_AUDIO_HAPTICS.md`.
 
 ---
 

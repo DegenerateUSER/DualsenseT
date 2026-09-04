@@ -115,21 +115,22 @@ To execute the test suite, run the following command in the project root:
 64. `testDualSenseUSBAudioDeviceMatching`: Verifies discovery accepts Sony DualSense USB audio endpoints while rejecting Bluetooth and unrelated built-in devices.
 65. `testControllerAudioQuadraphonicReadiness`: Verifies a four-channel device with the Quadraphonic tag is recognized as L/R/Haptic-L/Haptic-R ready.
 
-### Tier 9: USB Audio Controls & Audio Haptics (5 Test Cases)
+### Tier 9: USB Audio Controls & Audio Haptics (6 Test Cases)
 66. `testUSBAudioControlsSerializeWithoutChangingTriggerOffsets`: Verifies route/volume/mute/pre-gain fields and ensures audio additions do not move adaptive-trigger offsets.
 67. `testAudioControlFlagsAreNeverSentOverBluetooth`: Verifies controller audio state cannot add USB-only audio flags or payload bytes to BT reports.
 68. `testUSBAudioHapticsModeTemporarilyReleasesClassicRumble`: Verifies the USB report switches from classic rumble (`0x0F`) to PCM haptics (`0x0D`), zeros classic motors, preserves triggers, and restores the original state.
 69. `testSystemAudioMeterNormalization`: Verifies captured RMS values clamp and scale safely into the `0...1` level meter.
 70. `testAudioHapticsModePersistsAcrossTriggerChanges`: Verifies Weapon/Feedback changes retain PCM haptics mode and the correct trigger bytes.
+71. `testAudioBufferListDecodesPlanarAndInterleavedStereo`: Verifies the production logical-channel iterator decodes Golden Gate-style planar buffers and interleaved stereo identically.
 
 ---
 
 ## Coverage Summary
 
-- **Total Test Cases**: 70
-- **Pass Rate**: 100% (70/70)
+- **Total Test Cases**: 71
+- **Pass Rate**: 100% (71/71)
 - **Status**: Verified and Green
-- **Last Verified**: 28/08/2026 (after audio-haptics tab-lifecycle coexistence fix)
+- **Last Verified**: 04/09/2026 (after macOS 27 AudioBufferList compatibility fix)
 - **Execution Log**:
   ```
   Compiling and running DualSenseT Unit Tests...
@@ -142,8 +143,8 @@ To execute the test suite, run the following command in the project root:
   ========================================
               TEST SUMMARY                
   ========================================
-    Passed: 70
+    Passed: 71
     Failed: 0
-    Total:  70
+    Total:  71
   ========================================
   ```

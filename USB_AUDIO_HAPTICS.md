@@ -1,11 +1,12 @@
 # DualSenseT — USB Controller Audio & Audio Haptics
 
 > **Purpose:** Technical handoff and hardware-validation record for the USB audio feature.  
-> **Last Updated:** 28/08/2026 18:10 IST  
-> **Current State:** Implementation paused after the tab-lifecycle coexistence fix. Core
+> **Last Updated:** 04/09/2026 18:02 IST
+> **Current State:** Golden Gate buffer-layout compatibility fix implemented and awaiting
+> remote hardware retest. Core
 > discovery, Quadraphonic setup, controller speaker, microphone, isolated haptic channels,
 > system-audio capture, and audio-to-haptics streaming have worked on physical hardware.
-> Simultaneous adaptive triggers + audio haptics must be retested before continuing.
+> Simultaneous adaptive triggers + audio haptics and macOS 27 streaming must be retested.
 
 ---
 
@@ -31,6 +32,7 @@ Not yet fully verified:
 - Audio haptics continuing while L2/R2 modes are changed after the latest lifecycle fix.
 - Classic rumble returning after Audio Haptics is stopped.
 - Haptic Intensity slider response and left/right balance during streamed system audio.
+- Streamed audio haptics on macOS 27 Golden Gate after the portable AudioBufferList fix.
 - Disconnect/reconnect, sleep/wake, long-running drift, CPU use, and underrun behavior.
 
 ---
@@ -334,9 +336,77 @@ The user deferred this hardware retest to the next session.
 
 ---
 
-## 10. Test Coverage
+## 10. macOS 27 Golden Gate Cross-Device Failure
 
-The suite currently has **70/70 passing tests**.
+### Test Environment
+
+- Remote test machine: base M1 MacBook Air.
+- OS: macOS 27 Golden Gate beta.
+- Changes are pushed from the development Mac and tested on that separate machine, so local
+  `dualsenset.log` does not contain the remote run.
+
+### Evidence
+
+- Old HID features: working.
+- Isolated Haptic L/R channel tests: working.
+- System audio capture meter: moving with video volume.
+- Streamed audio haptics: no controller vibration.
+
+This isolates the failure to the **captured PCM → DSP buffer-unpacking bridge**:
+
+- Quadraphonic controller output is valid (isolated channel tests work).
+- PCM haptics mode is valid.
+- ScreenCaptureKit permission/capture is valid (meter moves).
+- The failure occurs only when captured system audio is decoded into haptic samples.
+
+### Root Cause
+
+The initial implementation called `CMSampleBufferGetDataBuffer` and treated the returned
+`CMBlockBuffer` as one contiguous Float32 array:
+
+- for planar audio, it assumed right-channel samples began exactly `frameCount` floats after
+  left-channel samples;
+- for interleaved audio, it assumed one buffer with L/R pairs.
+
+That happened to work on the original test Mac. ScreenCaptureKit on Golden Gate can expose
+separate planar `AudioBuffer` entries whose storage and padding must be read through the
+`AudioBufferList`. A raw byte scan can still make the level meter move while the DSP reads
+the wrong offsets or rejects the length, producing no actuator output.
+
+### Fix Implemented — Awaiting Remote Retest
+
+- Replaced raw `CMBlockBuffer` indexing with `CMSampleBuffer.withAudioBufferList`.
+- Logical channel lookup now follows each buffer's `mNumberChannels`, `mDataByteSize`, and
+  `mData`.
+- Supports:
+  - one interleaved stereo buffer;
+  - two separate one-channel planar buffers;
+  - mono input duplicated to both grips;
+  - mixed buffer groupings without assuming contiguous channel storage.
+- Updated the capture meter to iterate the real `AudioBufferList` too.
+- Added visible remote diagnostics:
+  - captured audio level;
+  - processed haptic output level;
+  - processed buffer count;
+  - dropped buffer count;
+  - exact captured PCM layout.
+- Added `testAudioBufferListDecodesPlanarAndInterleavedStereo`.
+
+Expected successful remote state while video is playing:
+
+```text
+Captured Audio: moving
+Processed Haptic Output: moving
+Processed: continuously increasing
+Dropped: ideally 0 or low
+Input format: 48000 Hz Float32 · 2 ch · planar/interleaved ...
+```
+
+---
+
+## 11. Test Coverage
+
+The suite currently has **71/71 passing tests**.
 
 Audio-specific tests:
 
@@ -356,15 +426,27 @@ Audio-specific tests:
    - Verifies capture RMS maps safely into the UI's `0...1` meter.
 7. `testAudioHapticsModePersistsAcrossTriggerChanges`
    - Verifies Weapon → Feedback updates keep PCM mode selected.
+8. `testAudioBufferListDecodesPlanarAndInterleavedStereo`
+   - Verifies the production channel iterator reads separate planar and combined interleaved
+     stereo layouts identically.
 
 These tests validate state and packet construction. They do not replace physical audio
 hardware testing.
 
 ---
 
-## 11. Required Retest Before Continuing
+## 12. Required Retest Before Continuing
 
 Use the rebuilt app with the controller connected through USB.
+
+### Golden Gate Buffer Compatibility
+
+1. Start Audio Haptics on the base M1 MacBook Air running macOS 27 Golden Gate.
+2. Play the same video used for the failed test.
+3. Confirm both Captured Audio and Processed Haptic Output meters move.
+4. Confirm Processed continuously increases.
+5. Record the displayed input-format line and Dropped count.
+6. Confirm the controller vibrates; if not, send a screenshot of these diagnostics.
 
 ### A. Trigger + Audio Haptics Simultaneously
 
@@ -408,10 +490,10 @@ When a wired 3.5 mm headset is available:
 
 ---
 
-## 12. Known Technical Risks
+## 13. Known Technical Risks
 
-- ScreenCaptureKit buffers are currently expected to be contiguous 32-bit Float PCM. The
-  stream format is logged once; other macOS versions/formats need explicit coverage.
+- ScreenCaptureKit must still provide 32-bit Float PCM, but planar/interleaved storage is now
+  handled through CoreMedia's canonical AudioBufferList API.
 - The capture path allocates an `AVAudioPCMBuffer` per incoming buffer. This is off the
   AudioUnit render thread but should be replaced by a preallocated ring-buffer pool if CPU,
   allocations, or latency are high.
@@ -430,7 +512,7 @@ When a wired 3.5 mm headset is available:
 
 ---
 
-## 13. File Inventory
+## 14. File Inventory
 
 - `Sources/Services/ControllerAudioService.swift`
   - CoreAudio discovery and Quadraphonic configuration.
@@ -455,7 +537,7 @@ When a wired 3.5 mm headset is available:
 
 ---
 
-## 14. Git / Resume Point
+## 15. Git / Resume Point
 
 - Known-good pre-audio hardware checkpoint:
   - `603384f` — `checkpoint hardware-verified controller support`
