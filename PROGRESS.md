@@ -1,8 +1,8 @@
-# DualSenseT — Implementation Progress Tracker
+# Sticky Fingers (formerly DualSenseT) — Implementation Progress Tracker
 
 > **Purpose:** This file tracks what has been done, what is in progress, and what remains.  
 > If a session ends mid-task, the next session should read this file FIRST to resume seamlessly.  
-> **Last Updated:** 04/09/2026 19:21 IST
+> **Last Updated:** 04/09/2026 20:38 IST
 
 ---
 
@@ -18,7 +18,73 @@ implemented. Speaker, microphone, isolated haptic channels, capture meter, and s
 haptics worked on physical hardware. The tab-switch/adaptive-trigger coexistence fix is
 hardware-verified—including simultaneous adaptive triggers—on a base M1 MacBook Air running
 macOS 27 Golden Gate. Continuous haptics now prefill a bounded ring with the first non-silent
-buffer before starting its pull-driven AVAudioSourceNode. Test suite: **73/73 passing**.
+buffer before starting its pull-driven AVAudioSourceNode. Test suite: **75/75 passing**.
+
+---
+
+## 🎨 Session: Original 3A App Icon (04/09/2026, 20:38 IST)
+
+- Reviewed supplied 3A (filled) and 3B (outline) concepts at full size and 32×32.
+- Selected **3A** for the app and Dock because its solid silhouette remains clearer at small
+  sizes; 3B remains better suited to monochrome/menu-bar use.
+- Replaced the previous detailed DualSense/PlayStation-logo artwork with a generic controller
+  mark using graphite, white, and the existing cyan accent.
+- Added editable source at `Assets/Brand/AppIcon-3A.svg` and usage notes at
+  `Assets/Brand/README.md`.
+- Added `generate-app-icon.sh`, which reproducibly builds all ten required macOS 1×/2× icon
+  representations into `Assets/AppIcon.icns`.
+- Rebuilt the app, confirmed the bundle contains the generated icon, and revalidated its
+  code signature.
+
+---
+
+## 🚀 Session: Open-Source Launch Polish (04/09/2026, 20:10 IST)
+
+**Product and UI**
+
+- Public product name changed to **Sticky Fingers** by owner decision.
+- App output is now `Sticky Fingers.app`, executable `StickyFingers`, bundle identifier
+  `com.degenerateuser.stickyfingers`.
+- Existing Application Support data is copied from the former DualSenseT directory on first
+  run so presets are not lost.
+- Audio page now presents USB readiness, Audio Haptics, controller audio controls, and one
+  live response meter.
+- Raw UIDs, channel layout, isolated tests, input format, and stream counters moved into a
+  collapsed **Advanced Diagnostics** section.
+- Removed the obsolete in-product “Implementation Stages” card.
+
+**Open-source and release**
+
+- Added GPL-3.0 license and HIDAPI third-party notices.
+- Added launch README, installation, troubleshooting, architecture, privacy, marketing,
+  contribution, security, changelog, release guide, and launch checklist.
+- Added issue/PR templates plus build/test CI.
+- Added Developer ID signing, hardened runtime, notarization, stapling, checksum, and GitHub
+  tag-release automation.
+- License and third-party notices now ship inside the app bundle.
+- Added Settings links to source, license, and privacy terms.
+
+**Security and verification**
+
+- Found that the UDP listener's “localhost” documentation did not match its actual network
+  exposure. Non-loopback peers are now rejected before command parsing.
+- Added tests that lock the public app identity and UDP IPv4/IPv6 loopback boundary.
+- Automated suite increased from 73 to **75 tests**.
+- Final local verification: **75/75 tests pass**, the arm64 bundle builds, plist and
+  identifiers validate, GPL notices are sealed into the bundle, code-sign verification
+  passes, and the renamed app launches and quits cleanly.
+- Shell scripts and all workflow/issue-form YAML parse successfully. CI and Developer ID
+  notarization still require the GitHub secrets and Apple credentials documented in
+  `RELEASING.md`.
+- Added a source-backed DualSenseM comparison and prioritized improvement roadmap.
+- Current 1024×1024 icon has no old product text, but its detailed controller and PlayStation
+  marks should be replaced with original launch artwork.
+
+**Known launch risk**
+
+The selected “Sticky Fingers” name collides with existing software/game/App Store uses and
+unrelated live trademarks. The owner chose to proceed after this was disclosed. A
+professional trademark clearance remains an explicit launch gate.
 
 ---
 
@@ -35,7 +101,8 @@ and generated Info.plist `LSUIElement = true`, which tell macOS to hide the Dock
 - Activation policy changed to `.regular`.
 - `LSUIElement` changed to `false`.
 - Menu-bar helper remains available.
-- Added an application menu with **Open DualSenseT** (`⌘O`) and **Quit DualSenseT** (`⌘Q`).
+- Added an application menu with **Open Sticky Fingers** (`⌘O`) and
+  **Quit Sticky Fingers** (`⌘Q`).
 - Clicking the Dock icon now reopens the hidden dashboard through
   `applicationShouldHandleReopen`.
 - Existing menu-bar Quit remains available.
@@ -425,12 +492,10 @@ live map on the frontend is totally broken." Sensors working over BT proved the 
 
 ### ⚠️ Must Verify On Hardware (this session's fixes)
 - [x] **BT adaptive triggers:** L2/R2 modes confirmed working on hardware.
-- [ ] **BT remaining output:** lightbar color, rumble, mic LED, player LEDs.
-- [ ] **USB lightbar** turns on and tracks the color picker.
-- [ ] **Live Map** in the real app window (render harness verified layout; confirm live
-      input updates over both transports).
-- [ ] If BT output is *still* dead after the seq-tag fix, next suspect is transport-level:
-      capture `IOHIDDeviceSetReport`/`hid_write` return codes from the log file.
+- [x] **BT remaining output:** lightbar color, rumble, mic LED, and player LEDs later
+  confirmed in the full transport retest.
+- [x] **USB lightbar** turns on and tracks the color picker.
+- [x] **Live Map** confirmed with live input over both transports.
 
 ---
 
@@ -497,8 +562,8 @@ reviewed before feature-testing BT. All issues found were fixed in the same sess
 **9. No BT cleanup on quit** (`AppDelegate.swift`, `ControllerManager.swift`)
 - **Fix:** New `ControllerManager.shutdown()` (stops background timer, ends App Nap
   activity, disconnects the exclusive BT session), called from `applicationWillTerminate`.
-  Also: BT `onDisconnect` now resets the on-screen attitude and posts
-  `DualSenseTStatusChanged` immediately.
+  Also: BT `onDisconnect` now resets the on-screen attitude and posts the app status-change
+  notification immediately.
 
 **10. `LSMinimumSystemVersion` mismatch** (`build.sh`)
 - **Root Cause:** Generated Info.plist claimed macOS 12.0 while the binary targets macOS 14.0.
@@ -513,17 +578,16 @@ reviewed before feature-testing BT. All issues found were fixed in the same sess
 - Vendored hidapi is 0.14.0 and supports `bus_type` (`HID_API_BUS_BLUETOOTH`).
 
 ### ⚠️ Must Verify On Hardware (next session)
-- [ ] **In-game input over BT while DualSenseT is running** — the exclusive seize
-  (`kIOHIDOptionsTypeSeizeDevice` via hidapi) that makes BT output reports work may block
-  games/other apps from opening the controller. Biggest open design risk. (User: not yet tested.)
+- [x] **Input and output over BT while Sticky Fingers is running** — the user confirmed the
+  working USB/Bluetooth feature pass. Per-game compatibility should still be reported
+  separately because Steam Input and other tools may contend for the device.
 - [ ] **BT sensor axis orientation** — see Bug 4 note.
 - [ ] BT reconnect cycles (sleep/wake, out-of-range) — exercise the new close/reopen path.
 - [ ] Mute button shows correctly in the UI over BT.
 
-### 🧹 Repo Hygiene (decision pending)
-- Untracked: `.agents/`, `files/` (contains a full duplicate "DualsenseT-polish" project),
-  `files.zip`, `PROGRESS.md`, `TEST_INFRA.md`, `TEST_READY.md` — decide what gets committed
-  before publishing.
+### 🧹 Repo Hygiene
+- `.agents/`, `.claude/`, local `files/` archives, generated bundles, and zip files are now
+  ignored. Public progress, test, license, policy, and launch documentation stays tracked.
 
 ---
 

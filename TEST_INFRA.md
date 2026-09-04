@@ -1,4 +1,4 @@
-# DualSenseT Testing Infrastructure
+# Sticky Fingers Testing Infrastructure
 
 ## Features Under Test
 
@@ -125,19 +125,23 @@ To execute the test suite, run the following command in the project root:
 72. `testHapticRingBufferPreservesStereoFrames`: Verifies the Golden Gate pull-driven source-node bridge preserves ordered left/right PCM frames.
 73. `testHapticSourceStartsOnlyAfterNonSilentPrefill`: Verifies the prepared Golden Gate output graph starts only after meaningful PCM has prefilled the ring.
 
+### Tier 10: Launch Identity & Network Boundary (2 Test Cases)
+74. `testPublicAppIdentity`: Locks the public display name, executable name, and stable bundle identifier used by releases.
+75. `testUDPServerAcceptsOnlyLoopbackPeers`: Verifies IPv4/IPv6 loopback peers are accepted and LAN peers are rejected.
+
 ---
 
 ## Coverage Summary
 
-- **Total Test Cases**: 73
-- **Pass Rate**: 100% (73/73)
+- **Total Test Cases**: 75
+- **Pass Rate**: 100% (75/75)
 - **Status**: Verified and Green
-- **Last Verified**: 04/09/2026 (after non-silent ring prefill and lazy Golden Gate AudioUnit startup)
+- **Last Verified**: 04/09/2026 (after launch identity and UDP loopback guardrail tests)
 - **Execution Log**:
   ```
-  Compiling and running DualSenseT Unit Tests...
+  Compiling and running Sticky Fingers Unit Tests...
   ========================================
-          DualSenseT UNIT TESTS           
+         STICKY FINGERS UNIT TESTS
   ========================================
     🟢 Passed: testPresetSerialization
     ...
@@ -145,8 +149,8 @@ To execute the test suite, run the following command in the project root:
   ========================================
               TEST SUMMARY                
   ========================================
-    Passed: 73
+    Passed: 75
     Failed: 0
-    Total:  73
+    Total:  75
   ========================================
   ```

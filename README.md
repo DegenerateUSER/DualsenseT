@@ -1,9 +1,57 @@
-# DualSenseT User Manual & Technical Documentation
+# Sticky Fingers
 
-DualSenseT is a high-performance, source-available macOS utility designed to customize, test, monitor, and integrate the PlayStation 5 DualSense and DualSense Edge controllers. It serves as a native macOS alternative to software like *DualSenseM* and Windows-only utilities like *DualSenseX*. An OSI license is planned before the project is marketed as open source.
+<img src="Assets/Brand/AppIcon-3A.svg" width="128" height="128" alt="Sticky Fingers app icon">
 
-The application provides both a standard **Dock app / SwiftUI Dashboard** and a lightweight
-**Menu Bar Helper** that remains available for status and quick actions.
+**A native, open-source DualSense control studio for macOS.**
+
+[![Build & Test](https://github.com/DegenerateUSER/DualsenseT/actions/workflows/ci.yml/badge.svg)](https://github.com/DegenerateUSER/DualsenseT/actions/workflows/ci.yml)
+[![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
+[![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black.svg)](#system-requirements--setup)
+[![Tests: 75](https://img.shields.io/badge/tests-75%20passing-brightgreen.svg)](TEST_READY.md)
+
+Sticky Fingers unlocks adaptive triggers, controller lighting, rumble, motion diagnostics,
+profiles, and USB audio haptics for PlayStation 5 DualSense controllers on Apple silicon
+Macs. It works over USB and Bluetooth, stays active while you play, and keeps advanced
+diagnostics out of the way until you need them.
+
+> Sticky Fingers is an independent community project. It is not affiliated with, endorsed
+> by, or sponsored by Sony Interactive Entertainment. “PlayStation” and “DualSense” are
+> trademarks of their respective owners.
+
+## Highlights
+
+- **Adaptive triggers over USB and Bluetooth** — 11 editable modes for L2 and R2.
+- **USB audio haptics** — turn game, video, or music audio into independent grip feedback.
+- **Controller audio** — speaker/headset routing, microphone source, gain, and mute.
+- **Lighting and rumble** — lightbar color/pulse, player LEDs, mic LED, independent motors.
+- **Live diagnostics** — responsive controller map, touch points, gyro/accelerometer fusion.
+- **Automation** — built-in/custom presets, per-app switching, menu-bar controls.
+- **Game integration** — DualSenseX-compatible UDP server for mods and compatibility layers.
+- **Privacy-first** — controller and audio processing stay on the Mac.
+
+## Quick Start
+
+1. See [Installation](docs/INSTALLATION.md) for a release build or source build.
+2. Connect a DualSense through USB or Bluetooth.
+3. Configure triggers, lighting, haptics, or a preset.
+4. For USB audio haptics, grant Screen & System Audio Recording when prompted.
+5. Switch to your game; Sticky Fingers continues running in the background.
+
+## Documentation
+
+- [Installation and permissions](docs/INSTALLATION.md)
+- [User guide](#tab-by-tab-dashboard-guide)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [USB audio and haptics internals](USB_AUDIO_HAPTICS.md)
+- [Privacy](PRIVACY.md)
+- [Launch and messaging playbook](docs/MARKETING.md)
+- [Competitive positioning](docs/COMPETITIVE_POSITIONING.md)
+- [Launch readiness checklist](LAUNCH_CHECKLIST.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security](SECURITY.md)
+- [Release process](RELEASING.md)
+- [Changelog](CHANGELOG.md)
 
 ---
 
@@ -30,18 +78,19 @@ The application provides both a standard **Dock app / SwiftUI Dashboard** and a 
 
 ## System Requirements & Setup
 
-* **Operating System:** macOS 14.0 (Sonoma) or newer on Apple silicon.
-* **Supported Hardware:** PlayStation 5 DualSense Controller (CFI-ZCT1W) or DualSense Edge Controller (CFI-ZCP1).
+* **Operating System:** Built for macOS 14.0 (Sonoma) or newer on Apple silicon.
+* **Supported Hardware:** DualSense (CFI-ZCT1W) is hardware-verified. DualSense Edge
+  (CFI-ZCP1) detection is implemented, but its complete launch test matrix is still pending.
 * **Connection Type:**
   * **Bluetooth (Wireless):** Hardware-verified for adaptive triggers, LED lightbar, rumble, mic/player LEDs, touchpad, gyro/accelerometer, battery, and live input through the app's exclusive raw-HID path.
-  * **USB (Wired):** Plug-and-play. Ensures lowest possible latency.
+  * **USB (Wired):** Direct wired transport and the required connection for controller audio.
 
 ---
 
 ## Dual-Mode Architecture
 
 ### 1. Menu Bar Helper
-On launch, DualSenseT also runs as a status item in the macOS Menu Bar.
+On launch, Sticky Fingers also runs as a status item in the macOS Menu Bar.
 * **Live Status:** Displays connection type and battery percentage (e.g. `[BT] 85%` or `[USB] 100%`).
 * **Quick Action Presets:** Click the menu icon to switch between default presets (e.g. Bow & Arrow, Heavy Rifle, Racing Brake, Machine Gun, Semi-Auto Pistol, and more) instantly without opening the dashboard.
 * **Window Controls:** Open the main configuration dashboard or quit the app cleanly.
@@ -57,7 +106,7 @@ context menu, or the menu-bar helper.
 ## Tab-by-Tab Dashboard Guide
 
 ### 1. Left Trigger (L2) & Right Trigger (R2)
-These tabs let you configure Sony's physical **Adaptive Triggers** to simulate different mechanical behaviors. DualSenseT exposes **11 editable native trigger modes** and maps 19 DualSenseX UDP trigger types to their closest supported effect.
+These tabs let you configure Sony's physical **Adaptive Triggers** to simulate different mechanical behaviors. Sticky Fingers exposes **11 editable native trigger modes** and maps 19 DualSenseX UDP trigger types to their closest supported effect.
 
 #### Basic Modes:
 * **Off (Default):** Normal trigger pull. No added resistance or haptic feedback.
@@ -129,9 +178,10 @@ The Audio tab uses the DualSense USB Audio Class interface. Bluetooth does not e
   the Mac's default output device.
 * **Controller Audio Controls:** Headset/controller-speaker routing, microphone source,
   independent headset/speaker/microphone levels, and hardware microphone mute.
-* **Channel Tests:** Direct Front L/R audible tones and independent Haptic L/R actuator tests.
+* **Advanced Diagnostics:** Optional Front L/R audible tones, independent Haptic L/R
+  actuator tests, channel layout, device identity, and stream counters.
 * **System Audio Capture:** Uses the standard macOS Screen & System Audio Recording
-  permission and shows a live input meter.
+  permission and shows one clean live haptic-response meter.
 * **Audio Haptics:** Extracts bass/transients from game, music, or video audio and streams
   stereo feedback to the two grip actuators while normal Mac audio continues unchanged.
 * **Portable PCM Layouts:** Reads CoreMedia AudioBufferLists correctly whether ScreenCaptureKit
@@ -163,7 +213,7 @@ Provides 3D spatial diagnostics of the controller's motion.
 ### 7. UDP Server
 Emulates the **DualSenseX UDP Server protocol** on port `6969`.
 * **Purpose:** Allows games running inside Wine, CrossOver, Game Porting Toolkit, or native game mods (e.g. Cyberpunk 2077, Spider-Man) to send JSON instructions directly to your controller triggers and LEDs.
-* **Extended Protocol:** Maps all 19 DSX trigger types (Normal, Custom, GameCube, Resistance, Bow, Galloping, SemiAutomaticGun, AutomaticGun, Machine, Choppy, VerySoft through Hardest, Rigid, VibrateTriggerPulse, VibrateTrigger) to the closest native DualSenseT trigger mode for maximum fidelity.
+* **Extended Protocol:** Maps all 19 DSX trigger types (Normal, Custom, GameCube, Resistance, Bow, Galloping, SemiAutomaticGun, AutomaticGun, Machine, Choppy, VerySoft through Hardest, Rigid, VibrateTriggerPulse, VibrateTrigger) to the closest native Sticky Fingers trigger mode for maximum fidelity.
 * **Configuration:** Toggle active server status and configure the server to launch automatically on app startup.
 
 ---
@@ -192,7 +242,7 @@ Advanced remapping and background automation.
 ## Advanced Engineering Features
 
 ### Adaptive IMU Complementary Filter
-The macOS `GameController` framework does not natively populate the `attitude` quaternion (returns static `w:1, x:0, y:0, z:0`) for the DualSense controller. To solve this, DualSenseT implements an **Adaptive Complementary Filter** that fuses raw sensor data in real-time:
+The macOS `GameController` framework does not natively populate the `attitude` quaternion (returns static `w:1, x:0, y:0, z:0`) for the DualSense controller. To solve this, Sticky Fingers implements an **Adaptive Complementary Filter** that fuses raw sensor data in real-time:
 1. **Gyroscope Integration:** Integrates the rotation rates around the X (pitch), Y (yaw), and Z (roll) axes.
 2. **Accelerometer Drift Correction:** Uses the gravity vector from the accelerometer to correct pitch and roll drift.
 3. **Adaptive Gain Coupling:** 
@@ -214,7 +264,7 @@ faster than a display can render. To avoid wasting CPU while preserving controll
 * Lightbar breathing uses 10 HID updates per second instead of 20.
 
 ### Raw HID Background Override
-The macOS `GameController` framework ceases sending output reports to controllers when the host application loses window focus. To keep adaptive triggers active when you click away to play a game, DualSenseT implements a multi-layered persistence system:
+The macOS `GameController` framework ceases sending output reports to controllers when the host application loses window focus. To keep adaptive triggers active when you click away to play a game, Sticky Fingers implements a multi-layered persistence system:
 
 1. **Dual Focus Detection:** Monitors both `NSApplication.didResignActiveNotification` and `NSWorkspace.didActivateApplicationNotification` to reliably detect focus loss.
 2. **Exponential Backoff Burst:** On focus loss, immediately fires 8 HID reports at 0/30/60/100/200/500/1000/2000ms intervals to win the race against macOS and GameController framework resets.
@@ -229,14 +279,24 @@ The macOS `GameController` framework ceases sending output reports to controller
 The repository contains a simple, zero-dependency packaging structure and build pipeline.
 
 ### Build and Package:
-Run the build script to compile `main.swift` and generate `DualSenseT.app`:
+Run the build script to compile `main.swift` and generate `Sticky Fingers.app`:
 ```bash
 ./build.sh
 ```
 
 ### Run Unit Tests:
-Run the build script with the `test` argument to compile and execute the custom unit test harness (`tests.swift`):
+Run the build script with the `test` argument to compile and execute the custom unit test harness (`Tests/Tests.swift`):
 ```bash
 ./build.sh test
 ```
-The test suite validates preset serialization, parameter parsing, touchpad remapping thresholds, quaternion calculations, HID report construction, background transition behavior, and end-to-end scenario tests.
+The 75-test suite validates preset serialization, parameter parsing, touchpad remapping,
+motion math, HID report construction, background transitions, PCM decoding, audio buffering,
+UDP loopback boundaries, and end-to-end scenarios.
+
+## License
+
+Sticky Fingers is free software licensed under the
+[GNU General Public License version 3 only](LICENSE). Vendored components and their terms are
+listed in [Third-Party Notices](THIRD_PARTY_NOTICES.md).
+
+Copyright © 2026 DegenerateUSER and contributors.

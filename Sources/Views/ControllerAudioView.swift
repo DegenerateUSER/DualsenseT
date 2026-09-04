@@ -7,6 +7,7 @@ public struct ControllerAudioView: View {
     @State private var hapticsStartWorkItem: DispatchWorkItem?
     @State private var hapticsRestoreWorkItem: DispatchWorkItem?
     @State private var streamStartWorkItem: DispatchWorkItem?
+    @State private var showsDiagnostics = false
 
     public init(
         service: ControllerAudioService,
@@ -23,10 +24,10 @@ public struct ControllerAudioView: View {
             VStack(alignment: .leading, spacing: 20) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Controller Audio & Haptics")
+                        Text("Audio")
                             .font(.title2)
                             .fontWeight(.bold)
-                        Text("USB audio interface diagnostics and setup")
+                        Text("Controller sound, microphone, and game-responsive haptics")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
@@ -42,16 +43,15 @@ public struct ControllerAudioView: View {
 
                 if let info = service.deviceInfo {
                     connectionCard(info)
-                    channelMapCard(info)
-                    setupCard(info)
-                    hardwareControlCard(info)
-                    channelTestCard(info)
+                    if !info.isQuadraphonic {
+                        setupCard(info)
+                    }
                     captureValidationCard
+                    hardwareControlCard(info)
+                    advancedDiagnostics(info)
                 } else {
                     disconnectedCard
                 }
-
-                implementationProgress
             }
             .padding()
         }
@@ -134,7 +134,7 @@ public struct ControllerAudioView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Audio Haptics")
                         .font(.headline)
-                    Text("Convert game, music, and video audio into independent left/right grip feedback.")
+                    Text("Feel game, music, and video audio through both controller grips.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -154,27 +154,6 @@ public struct ControllerAudioView: View {
                 }
             }
 
-            HStack {
-                Text("Captured Audio")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Spacer()
-                Text("\(Int(captureService.level * 100))%")
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(.secondary)
-            }
-
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.black.opacity(0.22))
-                    Capsule()
-                        .fill(captureService.isCapturing ? Color.cyan : Color.secondary)
-                        .frame(width: geometry.size.width * CGFloat(captureService.level))
-                }
-            }
-            .frame(height: 10)
-
             HStack(spacing: 12) {
                 Image(systemName: "waveform.path")
                     .foregroundColor(.cyan)
@@ -190,7 +169,7 @@ public struct ControllerAudioView: View {
             }
 
             HStack {
-                Text("Processed Haptic Output")
+                Text("Live Haptic Response")
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Spacer()
@@ -214,29 +193,17 @@ public struct ControllerAudioView: View {
                 Label(
                     service.isAudioHapticsRunning
                         ? service.audioHapticsStatus
-                        : captureService.statusMessage,
+                        : (captureService.isStarting ? "Starting audio capture…" : "Ready"),
                     systemImage: service.isAudioHapticsRunning
                         ? "waveform.circle.fill"
-                        : "record.circle"
+                        : "checkmark.circle"
                 )
                 .font(.subheadline)
-                .foregroundColor(service.isAudioHapticsRunning ? .cyan : .secondary)
-            }
-
-            if service.isAudioHapticsRunning {
-                HStack(spacing: 16) {
-                    Text("Processed: \(service.hapticProcessedBuffers)")
-                    Text("Dropped: \(service.hapticDroppedBuffers)")
-                    Text("Rendered: \(service.hapticRenderedFrames)")
-                    Text("Buffered: \(service.hapticBufferedFrames)")
-                }
-                .font(.system(.caption, design: .monospaced))
-                .foregroundColor(.secondary)
-
-                Text(service.hapticInputFormat)
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundColor(.secondary)
-                    .textSelection(.enabled)
+                .foregroundColor(
+                    service.isAudioHapticsRunning || captureService.isStarting
+                        ? .cyan
+                        : .secondary
+                )
             }
 
             if let error = captureService.lastError {
@@ -248,7 +215,11 @@ public struct ControllerAudioView: View {
                     .font(.caption)
                     .foregroundColor(.red)
             } else if service.isAudioHapticsRunning {
-                Text("Play music, a video, or a game. Bass and transients are streamed to the left/right haptic actuators; your normal Mac audio output is unchanged.")
+                Text("Your normal Mac audio output remains unchanged while haptics run in the background.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            } else {
+                Text("USB only · Requires Screen & System Audio Recording permission.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -259,7 +230,89 @@ public struct ControllerAudioView: View {
     }
 
     @ViewBuilder
-    private func channelTestCard(_ info: ControllerAudioDeviceInfo) -> some View {
+    private func advancedDiagnostics(_ info: ControllerAudioDeviceInfo) -> some View {
+        DisclosureGroup(isExpanded: $showsDiagnostics) {
+            VStack(alignment: .leading, spacing: 14) {
+                channelMapCard(info)
+                channelTestCard
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Device Details")
+                        .font(.headline)
+                    HStack(spacing: 12) {
+                        AudioCapabilityTile(
+                            title: "Output",
+                            value: "\(info.outputChannels) channels",
+                            icon: "speaker.wave.2.fill"
+                        )
+                        AudioCapabilityTile(
+                            title: "Input",
+                            value: "\(info.inputChannels) channels",
+                            icon: "mic.fill"
+                        )
+                        AudioCapabilityTile(
+                            title: "Sample Rate",
+                            value: "\(Int(info.sampleRate / 1000)) kHz",
+                            icon: "waveform"
+                        )
+                    }
+                    Text(info.outputUID)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .textSelection(.enabled)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    if service.isAudioHapticsRunning {
+                        Divider()
+                        Text("Stream Diagnostics")
+                            .font(.headline)
+                        HStack(spacing: 16) {
+                            Text("Captured \(Int(captureService.level * 100))%")
+                            Text("Output \(Int(service.hapticOutputLevel * 100))%")
+                            Text("Processed \(service.hapticProcessedBuffers)")
+                            Text("Dropped \(service.hapticDroppedBuffers)")
+                        }
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundColor(.secondary)
+
+                        HStack(spacing: 16) {
+                            Text("Rendered \(service.hapticRenderedFrames)")
+                            Text("Buffered \(service.hapticBufferedFrames)")
+                        }
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundColor(.secondary)
+
+                        Text(service.hapticInputFormat)
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundColor(.secondary)
+                            .textSelection(.enabled)
+                    }
+                }
+                .padding()
+                .background(Color.black.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .padding(.top, 14)
+        } label: {
+            HStack {
+                Image(systemName: "wrench.and.screwdriver")
+                    .foregroundColor(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Advanced Diagnostics")
+                        .font(.headline)
+                    Text("Channel tests, device details, and stream counters")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding()
+        .background(Color.white.opacity(0.035))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var channelTestCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
@@ -326,13 +379,16 @@ public struct ControllerAudioView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Controller Audio Controls")
+                    Text("Controller Audio")
                         .font(.headline)
-                    Text("Applied through the DualSense USB HID audio fields")
+                    Text("Choose where controller sound and microphone input are routed.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
                 Spacer()
+                Text(manager.controllerAudioControlsEnabled ? "On" : "Off")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
                 Toggle("Enabled", isOn: $manager.controllerAudioControlsEnabled)
                     .toggleStyle(.switch)
                     .labelsHidden()
@@ -388,78 +444,39 @@ public struct ControllerAudioView: View {
                 Label("Mute controller microphone", systemImage: "mic.slash.fill")
             }
 
-            Text("The headset + speaker route follows the controller protocol's split mode: the left channel goes to the headset and the right channel to the controller speaker.")
-                .font(.caption)
-                .foregroundColor(.secondary)
+            if manager.controllerAudioOutputRoute == .splitHeadphonesAndSpeaker {
+                Text("Split mode sends the left channel to the headset and the right channel to the controller speaker.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
         }
         .padding()
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .disabled(!info.isQuadraphonic)
-        .overlay(alignment: .topTrailing) {
-            if !manager.controllerAudioControlsEnabled {
-                Text("OFF")
-                    .font(.system(.caption2, design: .monospaced))
-                    .fontWeight(.bold)
-                    .foregroundColor(.secondary)
-                    .padding(.top, 18)
-                    .padding(.trailing, 54)
-                    .allowsHitTesting(false)
-            }
-        }
     }
 
     @ViewBuilder
     private func connectionCard(_ info: ControllerAudioDeviceInfo) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
-                Image(systemName: "cable.connector")
-                    .font(.title2)
-                    .foregroundColor(.green)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(info.name)
-                        .font(.headline)
-                    Text(info.manufacturer)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                Spacer()
-                Text("USB AUDIO")
-                    .font(.system(.caption, design: .monospaced))
-                    .fontWeight(.bold)
-                    .foregroundColor(.green)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.green.opacity(0.13))
-                    .clipShape(Capsule())
+        HStack(spacing: 12) {
+            Image(systemName: "cable.connector")
+                .font(.title2)
+                .foregroundColor(.green)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(info.name)
+                    .font(.headline)
+                Text("USB connected · \(Int(info.sampleRate / 1000)) kHz · \(info.outputChannels)-channel audio")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
-
-            Divider()
-
-            HStack(spacing: 12) {
-                AudioCapabilityTile(
-                    title: "Output",
-                    value: "\(info.outputChannels) channels",
-                    icon: "speaker.wave.2.fill"
-                )
-                AudioCapabilityTile(
-                    title: "Input",
-                    value: "\(info.inputChannels) channels",
-                    icon: "mic.fill"
-                )
-                AudioCapabilityTile(
-                    title: "Sample Rate",
-                    value: "\(Int(info.sampleRate / 1000)) kHz",
-                    icon: "waveform"
-                )
+            Spacer()
+            HStack(spacing: 5) {
+                Image(systemName: info.isQuadraphonic ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                Text(info.isQuadraphonic ? "Ready" : "Setup required")
             }
-
-            Text(info.outputUID)
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundColor(.secondary)
-                .textSelection(.enabled)
-                .lineLimit(1)
-                .truncationMode(.middle)
+            .font(.caption)
+            .fontWeight(.semibold)
+            .foregroundColor(info.isQuadraphonic ? .green : .yellow)
         }
         .padding()
         .background(Color.white.opacity(0.05))
@@ -496,10 +513,10 @@ public struct ControllerAudioView: View {
     @ViewBuilder
     private func setupCard(_ info: ControllerAudioDeviceInfo) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Speaker Configuration")
+            Text("One-time Audio Setup")
                 .font(.headline)
 
-            Text("Audio haptics require macOS to expose channels 3 and 4 as surround channels. This changes only the DualSense speaker layout—it does not change your default Mac output device.")
+            Text("Prepare the controller's two grip actuators for audio haptics. This changes only the controller layout, not your Mac's normal audio output.")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
 
@@ -514,7 +531,7 @@ public struct ControllerAudioView: View {
                 Spacer()
 
                 if !info.isQuadraphonic {
-                    Button("Configure Quadraphonic") {
+                    Button("Configure Audio") {
                         service.configureQuadraphonic()
                     }
                     .buttonStyle(.borderedProminent)
@@ -556,20 +573,6 @@ public struct ControllerAudioView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
-    private var implementationProgress: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Implementation Stages")
-                .font(.headline)
-            StageRow(number: 1, title: "USB discovery & Quadraphonic setup", state: .complete)
-            StageRow(number: 2, title: "Speaker, headset and microphone controls", state: .complete)
-            StageRow(number: 3, title: "Per-channel audio output tests", state: .complete)
-            StageRow(number: 4, title: "Permission-aware system audio capture", state: .complete)
-            StageRow(number: 5, title: "Audio-to-haptics DSP and streaming", state: .next)
-        }
-        .padding()
-        .background(Color.white.opacity(0.035))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
 }
 
 private struct AudioTestButton: View {
@@ -684,60 +687,5 @@ private struct AudioChannelTile: View {
         .padding(.vertical, 10)
         .background(Color.black.opacity(0.14))
         .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-}
-
-private struct StageRow: View {
-    enum State {
-        case complete
-        case next
-        case planned
-    }
-
-    let number: Int
-    let title: String
-    let state: State
-
-    var body: some View {
-        HStack(spacing: 10) {
-            ZStack {
-                Circle()
-                    .fill(stateColor.opacity(0.16))
-                    .frame(width: 24, height: 24)
-                if state == .complete {
-                    Image(systemName: "checkmark")
-                        .font(.caption)
-                        .fontWeight(.bold)
-                        .foregroundColor(stateColor)
-                } else {
-                    Text("\(number)")
-                        .font(.caption2)
-                        .fontWeight(.bold)
-                        .foregroundColor(stateColor)
-                }
-            }
-            Text(title)
-                .font(.subheadline)
-            Spacer()
-            Text(stateLabel)
-                .font(.caption)
-                .foregroundColor(stateColor)
-        }
-    }
-
-    private var stateColor: Color {
-        switch state {
-        case .complete: return .green
-        case .next: return .cyan
-        case .planned: return .secondary
-        }
-    }
-
-    private var stateLabel: String {
-        switch state {
-        case .complete: return "Ready"
-        case .next: return "Next"
-        case .planned: return "Planned"
-        }
     }
 }

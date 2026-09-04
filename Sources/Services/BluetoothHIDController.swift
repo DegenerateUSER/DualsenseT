@@ -147,7 +147,7 @@ public final class BluetoothHIDController {
         hasLoggedFirstWrite = false
         shouldStopReading = false
         let thread = Thread { [weak self] in self?.readLoop() }
-        thread.name = "com.tushar.DualSenseT.btHIDRead"
+        thread.name = "com.degenerateuser.stickyfingers.btHIDRead"
         thread.start()
         readThread = thread
 

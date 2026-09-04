@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Sticky Fingers app icon - concept 3A</title>
+  <desc>A solid generic game controller with cyan trigger and lightbar accents.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#33373F"/>
+      <stop offset="0.48" stop-color="#212429"/>
+      <stop offset="1" stop-color="#121317"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="236" fill="url(#background)"/>
+  <rect x="2" y="2" width="1020" height="1020" rx="234" fill="none"
+        stroke="#FFFFFF" stroke-opacity="0.10" stroke-width="4"/>
+  <g transform="translate(152,259) scale(4.8649)">
+    <rect x="24" y="0" width="20" height="9" rx="4" fill="#7C8592"/>
+    <rect x="104" y="0" width="20" height="9" rx="4" fill="#4FD8FF"/>
+    <path d="M74 4C96 4 112 5 122 7C134 9.5 140 24 143 44C146 64 143 88 130 96C120 102 110 98 104 86C98 74 92 66 74 66C56 66 50 74 44 86C38 98 28 102 18 96C5 88 2 64 5 44C8 24 14 9.5 26 7C36 5 52 4 74 4Z"
+          fill="#E6EDF5"/>
+    <rect x="52" y="9" width="44" height="26" rx="7" fill="#1B1D22"/>
+    <rect x="46" y="11" width="3.6" height="22" rx="1.8" fill="#4FD8FF"/>
+    <rect x="98.4" y="11" width="3.6" height="22" rx="1.8" fill="#4FD8FF"/>
+    <rect x="22.5" y="27" width="7" height="15" rx="2.4" fill="#1B1D22"/>
+    <rect x="18.5" y="31" width="15" height="7" rx="2.4" fill="#1B1D22"/>
+    <circle cx="122" cy="27.5" r="3.6" fill="#1B1D22"/>
+    <circle cx="115.4" cy="34" r="3.6" fill="#1B1D22"/>
+    <circle cx="128.6" cy="34" r="3.6" fill="#1B1D22"/>
+    <circle cx="122" cy="40.5" r="3.6" fill="#1B1D22"/>
+    <circle cx="54" cy="50" r="10" fill="#1B1D22"/>
+    <circle cx="94" cy="50" r="10" fill="#1B1D22"/>
+  </g>
+</svg>

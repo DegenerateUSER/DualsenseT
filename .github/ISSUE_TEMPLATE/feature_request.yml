@@ -1,0 +1,59 @@
+name: Feature request
+description: Propose a focused improvement to Sticky Fingers
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What cannot be done today, and who needs it?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the result, not only the UI control.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Product area
+      options:
+        - Adaptive triggers
+        - Lighting or rumble
+        - USB audio or audio haptics
+        - Input, motion, or Live Map
+        - Presets or automation
+        - UDP or game integration
+        - Accessibility or localization
+        - Documentation or developer experience
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Include workarounds or competing implementations you evaluated.
+
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware and compatibility
+      description: Note whether this needs USB, Bluetooth, DualSense Edge, or specific macOS behavior.
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I can help implement this.
+        - label: I can test this on physical hardware.
+        - label: I can help document this.
+

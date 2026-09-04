@@ -1,0 +1,125 @@
+name: Bug report
+description: Report reproducible behavior in Sticky Fingers
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Sticky Fingers. Search existing issues first and remove
+        private information from logs. Security issues must use private vulnerability reporting.
+
+  - type: input
+    id: version
+    attributes:
+      label: Sticky Fingers version
+      description: Release version or commit hash
+      placeholder: "1.0.0 or abc1234"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: macos
+    attributes:
+      label: macOS version
+      options:
+        - macOS 14 Sonoma
+        - macOS 15 Sequoia
+        - Newer beta or prerelease
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: mac
+    attributes:
+      label: Mac model
+      placeholder: "M1 MacBook Air"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: controller
+    attributes:
+      label: Controller
+      options:
+        - DualSense
+        - DualSense Edge
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Connection
+      multiple: true
+      options:
+        - USB
+        - Bluetooth
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Connection
+        - Adaptive triggers
+        - Lightbar or LEDs
+        - Classic rumble
+        - USB audio or audio haptics
+        - Live Map
+        - Motion or touchpad
+        - Presets or per-app profiles
+        - UDP server
+        - App lifecycle or performance
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include the exact starting state and every action.
+      placeholder: |
+        1. Connect over USB
+        2. Open Audio
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: |
+        Include relevant Advanced Diagnostics values or a short reviewed log excerpt.
+        Do not paste secrets or a complete unreviewed log.
+      render: text
+
+  - type: checkboxes
+    id: conflicts
+    attributes:
+      label: Conflict check
+      options:
+        - label: I tested after quitting Steam Input and other controller utilities.
+        - label: I searched existing issues for this behavior.
+          required: true
+

@@ -169,7 +169,7 @@ public class ControllerManager: ObservableObject {
     private var pendingSendCount = 0
     private let maxPendingSends = 2
     
-    private let backgroundQueue = DispatchQueue(label: "com.tushar.DualSenseT.background", qos: .userInteractive)
+    private let backgroundQueue = DispatchQueue(label: "com.degenerateuser.stickyfingers.background", qos: .userInteractive)
     private var backgroundTimer: DispatchSourceTimer?
     private var appNapActivity: NSObjectProtocol?
     private var backgroundTimerStartDate: Date?
@@ -255,7 +255,7 @@ public class ControllerManager: ObservableObject {
         guard appNapActivity == nil else { return }
         appNapActivity = ProcessInfo.processInfo.beginActivity(
             options: [.latencyCritical, .idleSystemSleepDisabled],
-            reason: "DualSenseT Background Keep-Alive"
+            reason: "Sticky Fingers Background Keep-Alive"
         )
         logToFile("App Nap prevention activated.")
     }
@@ -409,7 +409,7 @@ public class ControllerManager: ObservableObject {
             self.buttonsPressed.removeAll()
             self.motionAttitude = GCQuaternion(x: 0, y: 0, z: 0, w: 1)
             self.refreshConnectionType()
-            NotificationCenter.default.post(name: NSNotification.Name("DualSenseTStatusChanged"), object: nil)
+            NotificationCenter.default.post(name: .stickyFingersStatusChanged, object: nil)
         }
     }
 
@@ -434,7 +434,7 @@ public class ControllerManager: ObservableObject {
             refreshConnectionType()
             updateBackgroundState()
             applyTriggerSettings(log: false)
-            NotificationCenter.default.post(name: NSNotification.Name("DualSenseTStatusChanged"), object: nil)
+            NotificationCenter.default.post(name: .stickyFingersStatusChanged, object: nil)
         }
     }
 
@@ -592,7 +592,7 @@ public class ControllerManager: ObservableObject {
                 }
             }
             self.controllers = GCController.controllers()
-            NotificationCenter.default.post(name: NSNotification.Name("DualSenseTStatusChanged"), object: nil)
+            NotificationCenter.default.post(name: .stickyFingersStatusChanged, object: nil)
         }
     }
     
@@ -615,7 +615,7 @@ public class ControllerManager: ObservableObject {
         applyTriggerSettings()
         updateLed()
         
-        NotificationCenter.default.post(name: NSNotification.Name("DualSenseTStatusChanged"), object: nil)
+        NotificationCenter.default.post(name: .stickyFingersStatusChanged, object: nil)
     }
     
     private var isBatchUpdating = false
@@ -1020,7 +1020,7 @@ public class ControllerManager: ObservableObject {
                     }
                 }
             }
-            NotificationCenter.default.post(name: NSNotification.Name("DualSenseTStatusChanged"), object: nil)
+            NotificationCenter.default.post(name: .stickyFingersStatusChanged, object: nil)
         }
     }
     
@@ -1149,7 +1149,7 @@ public class ControllerManager: ObservableObject {
         let thread = Thread { [weak self] in
             self?.hidRunLoopThreadMain()
         }
-        thread.name = "com.tushar.DualSenseT.hidRunLoop"
+        thread.name = "com.degenerateuser.stickyfingers.hidRunLoop"
         thread.start()
         hidRunLoopThread = thread
         hidRunLoopReadySemaphore.wait()

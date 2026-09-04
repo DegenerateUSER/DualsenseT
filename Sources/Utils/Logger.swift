@@ -1,10 +1,8 @@
 import Foundation
 
 public func logToFile(_ message: String) {
-    let paths = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
-    let appSupport = paths[0].appendingPathComponent("DualSenseT", isDirectory: true)
-    try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
-    let logFile = appSupport.appendingPathComponent("dualsenset.log")
+    let logFile = AppIdentity.applicationSupportDirectory
+        .appendingPathComponent("sticky-fingers.log")
     
     let formatter = DateFormatter()
     formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"

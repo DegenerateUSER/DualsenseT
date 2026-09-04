@@ -33,7 +33,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(statusChanged),
-            name: NSNotification.Name("DualSenseTStatusChanged"),
+            name: .stickyFingersStatusChanged,
             object: nil
         )
         
@@ -95,8 +95,17 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         mainMenu.addItem(appMenuItem)
 
         let appMenu = NSMenu()
+        let aboutItem = NSMenuItem(
+            title: "About \(AppIdentity.displayName)",
+            action: #selector(showAboutPanel),
+            keyEquivalent: ""
+        )
+        aboutItem.target = self
+        appMenu.addItem(aboutItem)
+        appMenu.addItem(.separator())
+
         let showItem = NSMenuItem(
-            title: "Open DualSenseT",
+            title: "Open \(AppIdentity.displayName)",
             action: #selector(showMainWindow),
             keyEquivalent: "o"
         )
@@ -105,7 +114,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         appMenu.addItem(.separator())
 
         let quitItem = NSMenuItem(
-            title: "Quit DualSenseT",
+            title: "Quit \(AppIdentity.displayName)",
             action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q"
         )
@@ -114,6 +123,21 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         appMenuItem.submenu = appMenu
         NSApp.mainMenu = mainMenu
+    }
+
+    @objc public func showAboutPanel() {
+        let credits = NSAttributedString(
+            string: """
+            A native, open-source DualSense control studio for macOS.
+
+            Free software under GPL-3.0-only, provided without warranty.
+            github.com/DegenerateUSER/DualsenseT
+            """
+        )
+        NSApp.orderFrontStandardAboutPanel(options: [
+            .applicationName: AppIdentity.displayName,
+            .credits: credits
+        ])
     }
     
     public func setupMenuBar() {
@@ -178,12 +202,12 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                         button.image = MenuIconHelper.createBluetoothIcon()
                     } else {
                         let config = NSImage.SymbolConfiguration(scale: .medium)
-                        button.image = NSImage(systemSymbolName: "gamecontroller", accessibilityDescription: "DualSenseT")?.withSymbolConfiguration(config)
+                        button.image = NSImage(systemSymbolName: "gamecontroller", accessibilityDescription: AppIdentity.displayName)?.withSymbolConfiguration(config)
                     }
                     button.title = String(format: " %.0f%%", self.controllerManager.batteryLevel * 100)
                 } else {
                     let config = NSImage.SymbolConfiguration(scale: .medium)
-                    button.image = NSImage(systemSymbolName: "gamecontroller", accessibilityDescription: "DualSenseT")?.withSymbolConfiguration(config)
+                    button.image = NSImage(systemSymbolName: "gamecontroller", accessibilityDescription: AppIdentity.displayName)?.withSymbolConfiguration(config)
                     button.title = " --%"
                 }
             }
@@ -219,8 +243,8 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             backing: .buffered, defer: false)
         
         window.center()
-        window.setFrameAutosaveName("DualSenseT Main Window")
-        window.title = "DualSenseT"
+        window.setFrameAutosaveName("Sticky Fingers Main Window")
+        window.title = AppIdentity.displayName
         window.contentView = NSHostingView(rootView: contentView)
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden

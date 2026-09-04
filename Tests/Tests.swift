@@ -4,6 +4,7 @@ import GameController
 import AppKit
 import SwiftUI
 import CoreAudio
+import Network
 
 struct AssertionFailure: Error {
     let message: String
@@ -54,8 +55,35 @@ class TestSuite {
     func run() {
         _ = NSApplication.shared
         print("\n========================================")
-        print("        DualSenseT UNIT TESTS           ")
+        print("       STICKY FINGERS UNIT TESTS        ")
         print("========================================")
+
+        runTest(name: "testPublicAppIdentity") {
+            try XCTAssertEqual(AppIdentity.displayName, "Sticky Fingers")
+            try XCTAssertEqual(AppIdentity.executableName, "StickyFingers")
+            try XCTAssertEqual(
+                AppIdentity.bundleIdentifier,
+                "com.degenerateuser.stickyfingers"
+            )
+        }
+
+        runTest(name: "testUDPServerAcceptsOnlyLoopbackPeers") {
+            try XCTAssertTrue(
+                UDPListener.isLoopbackEndpoint(
+                    .hostPort(host: "127.0.0.1", port: 6969)
+                )
+            )
+            try XCTAssertTrue(
+                UDPListener.isLoopbackEndpoint(
+                    .hostPort(host: "::1", port: 6969)
+                )
+            )
+            try XCTAssertFalse(
+                UDPListener.isLoopbackEndpoint(
+                    .hostPort(host: "192.168.1.20", port: 6969)
+                )
+            )
+        }
         
         runTest(name: "testPresetSerialization") {
             let preset = TriggerPreset(

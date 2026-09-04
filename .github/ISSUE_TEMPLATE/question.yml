@@ -1,0 +1,40 @@
+name: Setup or usage question
+description: Ask for help using Sticky Fingers
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Read the installation and troubleshooting guides first. Do not post security reports
+        or unreviewed logs here.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: What do you need help with?
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Sticky Fingers version
+      placeholder: "1.0.0 or commit hash"
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: "macOS version, Mac model, controller, USB/Bluetooth"
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I read the installation and troubleshooting guides.
+          required: true
+        - label: This is not a private security report.
+          required: true
+

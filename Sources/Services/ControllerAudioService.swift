@@ -518,7 +518,7 @@ public final class ControllerAudioService: ObservableObject {
         }
 
         isAudioHapticsRunning = true
-        audioHapticsStatus = "Waiting for non-silent audio before starting haptic output…"
+        audioHapticsStatus = "Waiting for audio…"
         lastError = nil
         logToFile("ControllerAudioService: audio haptics started on AudioDeviceID \(info.outputDeviceID).")
     }
@@ -706,7 +706,7 @@ public final class ControllerAudioService: ObservableObject {
             hapticsEngineStartLock.unlock()
             DispatchQueue.main.async { [weak self] in
                 self?.audioHapticsStatus =
-                    "Streaming system audio to haptic channels 3 and 4."
+                    "Running — system audio is driving both controller grips."
             }
             logToFile("ControllerAudioService: pull-driven haptic output engine started after PCM prefill.")
         } catch {

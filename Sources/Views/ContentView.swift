@@ -60,7 +60,7 @@ public struct ContentView: View {
                 VStack(spacing: 12) {
                     // Title
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("DualSenseT")
+                        Text(AppIdentity.displayName)
                             .font(.system(size: 20, weight: .black))
                             .foregroundColor(.white)
                         

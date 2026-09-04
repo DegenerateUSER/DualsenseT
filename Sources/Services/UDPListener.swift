@@ -7,7 +7,7 @@ public class UDPListener: ObservableObject {
     @Published public var lastMessage = "No commands received"
     
     private var listener: NWListener?
-    private var queue = DispatchQueue(label: "com.dualsenset.udp")
+    private var queue = DispatchQueue(label: "com.degenerateuser.stickyfingers.udp")
     private var manager: ControllerManager?
     
     public init() {}
@@ -37,6 +37,10 @@ public class UDPListener: ObservableObject {
             }
             
             listener?.newConnectionHandler = { [weak self] connection in
+                guard Self.isLoopbackEndpoint(connection.endpoint) else {
+                    connection.cancel()
+                    return
+                }
                 self?.handleConnection(connection)
             }
             
@@ -44,6 +48,21 @@ public class UDPListener: ObservableObject {
         } catch {
             self.lastMessage = "Error: \(error.localizedDescription)"
             logToFile("UDP Server start error: \(error.localizedDescription)")
+        }
+    }
+
+    static func isLoopbackEndpoint(_ endpoint: NWEndpoint) -> Bool {
+        guard case let .hostPort(host, _) = endpoint else { return false }
+
+        switch host {
+        case let .name(name, _):
+            return name.caseInsensitiveCompare("localhost") == .orderedSame
+        case let .ipv4(address):
+            return address.rawValue == Data([127, 0, 0, 1])
+        case let .ipv6(address):
+            return address.rawValue == Data(repeating: 0, count: 15) + Data([1])
+        @unknown default:
+            return false
         }
     }
     

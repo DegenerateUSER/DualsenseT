@@ -12,7 +12,7 @@ public final class SystemAudioCaptureService: NSObject, ObservableObject {
     @Published public private(set) var lastError: String?
 
     private let audioQueue = DispatchQueue(
-        label: "com.tushar.DualSenseT.systemAudioCapture",
+        label: "com.degenerateuser.stickyfingers.systemAudioCapture",
         qos: .userInteractive
     )
     private var captureStream: SCStream?
@@ -100,7 +100,7 @@ public final class SystemAudioCaptureService: NSObject, ObservableObject {
             }
         } catch {
             await publishFailure(
-                "System audio capture failed: \(error.localizedDescription). Allow DualSenseT in System Settings → Privacy & Security → Screen & System Audio Recording."
+                "System audio capture failed: \(error.localizedDescription). Allow \(AppIdentity.displayName) in System Settings → Privacy & Security → Screen & System Audio Recording."
             )
         }
     }

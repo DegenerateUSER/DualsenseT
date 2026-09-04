@@ -4,9 +4,8 @@ public class PresetManager: ObservableObject {
     @Published public var customPresets: [TriggerPreset] = []
     
     private var presetsFolder: URL {
-        let paths = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
-        let appSupport = paths[0].appendingPathComponent("DualSenseT", isDirectory: true)
-        let presetsDir = appSupport.appendingPathComponent("presets", isDirectory: true)
+        let presetsDir = AppIdentity.applicationSupportDirectory
+            .appendingPathComponent("presets", isDirectory: true)
         
         try? FileManager.default.createDirectory(at: presetsDir, withIntermediateDirectories: true, attributes: nil)
         return presetsDir

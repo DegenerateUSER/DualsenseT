@@ -1,4 +1,4 @@
-# DualSenseT — USB Controller Audio & Audio Haptics
+# Sticky Fingers — USB Controller Audio & Audio Haptics
 
 > **Purpose:** Technical handoff and hardware-validation record for the USB audio feature.  
 > **Last Updated:** 04/09/2026 19:03 IST
@@ -22,10 +22,13 @@ Implemented:
 - Hardware microphone mute.
 - Direct per-channel audible and haptic test tones.
 - Permission-aware system/game audio capture.
-- Live audio-level meter.
+- Live haptic-response meter.
 - Stereo audio-to-haptics DSP streamed to the two grip actuators.
 - Temporary switching between classic rumble and PCM audio-haptics modes.
 - Continued audio-haptics streaming while navigating to other app tabs.
+- Launch UI centered on start/stop, intensity, routing, volume, and one live response meter;
+  device IDs, channel tests, PCM format, and counters remain available under a collapsed
+  Advanced Diagnostics disclosure.
 
 Not yet fully verified:
 - Wired 3.5 mm headset output/input (no wired headset available during this session).
@@ -509,7 +512,7 @@ adaptive-trigger modes worked at the same time.
 
 ## 11. Test Coverage
 
-The suite currently has **73/73 passing tests**.
+The suite currently has **75/75 passing tests**.
 
 Audio-specific tests:
 

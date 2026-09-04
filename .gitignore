@@ -1,9 +1,20 @@
 # macOS
 .DS_Store
 
+# Local agent and launch-working directories
+.agents/
+.claude/
+files/
+
 # Compiled Binaries and App Bundles
 DualSenseT
 DualSenseT.app
+StickyFingers
+Sticky Fingers.app
+release/
+*.zip
+hid_mac.o
+test_runner
 
 # Xcode / Swift build files (in case Xcode is used in the future)
 build/

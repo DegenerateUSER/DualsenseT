@@ -138,9 +138,9 @@ public struct SettingsView: View {
                 
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text("App Version:")
+                        Text(AppIdentity.displayName)
                         Spacer()
-                        Text("1.0.0 (Release)")
+                        Text(appVersion)
                     }
                     Divider()
                     HStack {
@@ -148,6 +148,28 @@ public struct SettingsView: View {
                         Spacer()
                         Text(manager.isConnected ? "DualSense (\(manager.connectionType))" : "No controller connected")
                     }
+                    Divider()
+                    Text("Copyright © 2026 DegenerateUSER and contributors.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text("Free software under GPL-3.0-only, provided without warranty.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    HStack(spacing: 14) {
+                        Link(
+                            "Source Code",
+                            destination: URL(string: "https://github.com/DegenerateUSER/DualsenseT")!
+                        )
+                        Link(
+                            "License",
+                            destination: URL(string: "https://github.com/DegenerateUSER/DualsenseT/blob/main/LICENSE")!
+                        )
+                        Link(
+                            "Privacy",
+                            destination: URL(string: "https://github.com/DegenerateUSER/DualsenseT/blob/main/PRIVACY.md")!
+                        )
+                    }
+                    .font(.caption)
                 }
                 .padding()
                 .background(Color.white.opacity(0.05))
@@ -158,6 +180,13 @@ public struct SettingsView: View {
         .onAppear {
             self.launchAtLogin = isLaunchAtLoginEnabled()
         }
+    }
+
+    private var appVersion: String {
+        let version = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleShortVersionString"
+        ) as? String
+        return version.map { "Version \($0)" } ?? "Development build"
     }
     
     func setLaunchAtLogin(enabled: Bool) {
