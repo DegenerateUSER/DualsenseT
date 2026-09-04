@@ -82,6 +82,8 @@ public final class ControllerAudioService: ObservableObject {
     @Published public private(set) var hapticProcessedBuffers = 0
     @Published public private(set) var hapticDroppedBuffers = 0
     @Published public private(set) var hapticOutputLevel: Float = 0
+    @Published public private(set) var hapticRenderedFrames = 0
+    @Published public private(set) var hapticBufferedFrames = 0
 
     private var testEngine: AVAudioEngine?
     private var testSourceNode: AVAudioSourceNode?
@@ -98,6 +100,9 @@ public final class ControllerAudioService: ObservableObject {
     private var hapticInputFormatSnapshot = "Waiting for captured PCM…"
     private var lastHapticDiagnosticsDelivery: UInt64 = 0
     private var hasReportedHapticPipelineError = false
+    private let hapticsEngineStartLock = NSLock()
+    private var hapticsEngineStarted = false
+    private var hapticsEngineStarting = false
 
     public init() {
         refresh()
@@ -482,12 +487,6 @@ public final class ControllerAudioService: ObservableObject {
         engine.attach(sourceNode)
         engine.connect(sourceNode, to: outputNode, format: format)
         engine.prepare()
-        do {
-            try engine.start()
-        } catch {
-            lastError = "Could not start the haptic output engine: \(error.localizedDescription)"
-            return
-        }
 
         hapticLowPassHigh = (0, 0)
         hapticLowPassLow = (0, 0)
@@ -500,6 +499,12 @@ public final class ControllerAudioService: ObservableObject {
         hapticProcessedBuffers = 0
         hapticDroppedBuffers = 0
         hapticOutputLevel = 0
+        hapticRenderedFrames = 0
+        hapticBufferedFrames = 0
+        hapticsEngineStartLock.lock()
+        hapticsEngineStarted = false
+        hapticsEngineStarting = false
+        hapticsEngineStartLock.unlock()
         hapticsEngine = engine
         hapticsSourceNode = sourceNode
         hapticsRingBuffer = ringBuffer
@@ -513,7 +518,7 @@ public final class ControllerAudioService: ObservableObject {
         }
 
         isAudioHapticsRunning = true
-        audioHapticsStatus = "Streaming system audio to haptic channels 3 and 4."
+        audioHapticsStatus = "Waiting for non-silent audio before starting haptic output…"
         lastError = nil
         logToFile("ControllerAudioService: audio haptics started on AudioDeviceID \(info.outputDeviceID).")
     }
@@ -528,12 +533,18 @@ public final class ControllerAudioService: ObservableObject {
         hapticsRingBuffer = nil
         hapticsEngine = nil
         hapticsFormat = nil
+        hapticsEngineStartLock.lock()
+        hapticsEngineStarted = false
+        hapticsEngineStarting = false
+        hapticsEngineStartLock.unlock()
         if isAudioHapticsRunning {
             logToFile("ControllerAudioService: audio haptics stopped.")
         }
         isAudioHapticsRunning = false
         audioHapticsStatus = "Audio haptics are stopped."
         hapticOutputLevel = 0
+        hapticRenderedFrames = 0
+        hapticBufferedFrames = 0
     }
 
     private func processAudioHaptics(_ sampleBuffer: CMSampleBuffer) {
@@ -633,6 +644,22 @@ public final class ControllerAudioService: ObservableObject {
         hapticLowPassHigh = (highL, highR)
         hapticLowPassLow = (lowL, lowR)
         processedBufferCounter += 1
+
+        let engineStarted = isPreparedHapticsEngineStarted()
+        let shouldStartEngine = Self.shouldStartPreparedHapticsEngine(
+            isStarted: engineStarted,
+            outputPeak: outputPeak
+        )
+        if !engineStarted && !shouldStartEngine {
+            // Do not fill the ring with startup silence. The first meaningful PCM buffer
+            // primes the source before Golden Gate is asked to start the output clock.
+            publishHapticDiagnostics(outputPeak: outputPeak)
+            return
+        }
+        if shouldStartEngine {
+            ringBuffer.reset()
+        }
+
         let acceptedWithoutOverflow = ringBuffer.write(
             left: outputChannels[2],
             right: outputChannels[3],
@@ -641,7 +668,55 @@ public final class ControllerAudioService: ObservableObject {
         if !acceptedWithoutOverflow {
             droppedBufferCounter += 1
         }
+        if shouldStartEngine {
+            startPreparedHapticsEngine()
+        }
         publishHapticDiagnostics(outputPeak: outputPeak)
+    }
+
+    static func shouldStartPreparedHapticsEngine(
+        isStarted: Bool,
+        outputPeak: Float
+    ) -> Bool {
+        !isStarted && outputPeak > 0.0001
+    }
+
+    private func isPreparedHapticsEngineStarted() -> Bool {
+        hapticsEngineStartLock.lock()
+        let started = hapticsEngineStarted
+        hapticsEngineStartLock.unlock()
+        return started
+    }
+
+    private func startPreparedHapticsEngine() {
+        hapticsEngineStartLock.lock()
+        guard !hapticsEngineStarted, !hapticsEngineStarting,
+              let engine = hapticsEngine else {
+            hapticsEngineStartLock.unlock()
+            return
+        }
+        hapticsEngineStarting = true
+        hapticsEngineStartLock.unlock()
+
+        do {
+            try engine.start()
+            hapticsEngineStartLock.lock()
+            hapticsEngineStarted = true
+            hapticsEngineStarting = false
+            hapticsEngineStartLock.unlock()
+            DispatchQueue.main.async { [weak self] in
+                self?.audioHapticsStatus =
+                    "Streaming system audio to haptic channels 3 and 4."
+            }
+            logToFile("ControllerAudioService: pull-driven haptic output engine started after PCM prefill.")
+        } catch {
+            hapticsEngineStartLock.lock()
+            hapticsEngineStarting = false
+            hapticsEngineStartLock.unlock()
+            reportHapticPipelineError(
+                "Could not start the prefilled haptic output engine: \(error.localizedDescription)"
+            )
+        }
     }
 
     /// Iterates the first two logical channels using the AudioBufferList as the source of
@@ -783,12 +858,15 @@ public final class ControllerAudioService: ObservableObject {
         let processed = processedBufferCounter
         let dropped = droppedBufferCounter
         let inputFormat = hapticInputFormatSnapshot
+        let ring = hapticsRingBuffer?.diagnostics() ?? (buffered: 0, rendered: 0)
 
         DispatchQueue.main.async { [weak self] in
             guard let self, self.isAudioHapticsRunning else { return }
             self.hapticProcessedBuffers = processed
             self.hapticDroppedBuffers = dropped
             self.hapticInputFormat = inputFormat
+            self.hapticBufferedFrames = ring.buffered
+            self.hapticRenderedFrames = ring.rendered
             self.hapticOutputLevel =
                 self.hapticOutputLevel * 0.65 + outputPeak * 0.35
         }
@@ -999,6 +1077,7 @@ private final class HapticStereoRingBuffer {
     private var readIndex = 0
     private var writeIndex = 0
     private var availableFrames = 0
+    private var totalRenderedFrames = 0
 
     init(capacityFrames: Int) {
         self.capacityFrames = max(256, capacityFrames)
@@ -1080,6 +1159,7 @@ private final class HapticStereoRingBuffer {
             readIndex = (readIndex + 1) % capacityFrames
         }
         availableFrames -= framesToRead
+        totalRenderedFrames += framesToRead
     }
 
     func reset() {
@@ -1087,7 +1167,15 @@ private final class HapticStereoRingBuffer {
         readIndex = 0
         writeIndex = 0
         availableFrames = 0
+        totalRenderedFrames = 0
         lock.unlock()
+    }
+
+    func diagnostics() -> (buffered: Int, rendered: Int) {
+        lock.lock()
+        let result = (availableFrames, totalRenderedFrames)
+        lock.unlock()
+        return result
     }
 
     private func set(

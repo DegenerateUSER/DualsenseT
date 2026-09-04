@@ -1,8 +1,8 @@
 # DualSenseT — USB Controller Audio & Audio Haptics
 
 > **Purpose:** Technical handoff and hardware-validation record for the USB audio feature.  
-> **Last Updated:** 04/09/2026 18:02 IST
-> **Current State:** Golden Gate pull-driven AVAudioSourceNode/ring-buffer fix implemented and awaiting
+> **Last Updated:** 04/09/2026 18:53 IST
+> **Current State:** Golden Gate non-silent ring-prefill/lazy AudioUnit-start fix implemented and awaiting
 > remote hardware retest. Core
 > discovery, Quadraphonic setup, controller speaker, microphone, isolated haptic channels,
 > system-audio capture, and audio-to-haptics streaming have worked on physical hardware.
@@ -471,11 +471,43 @@ The ring currently uses a short `NSLock` around preallocated memory copies. That
 for this validation build; a lock-free atomic SPSC buffer remains the production-hardening
 target.
 
+### Remote Result After Pull-Driven Ring Buffer
+
+The next screenshot showed:
+
+```text
+Captured Audio: 23%
+Processed Haptic Output: 72%
+Processed: 1,360
+Dropped: 1,352
+Input format: 48000 Hz Float32 · 2 ch · planar buffers 1+1
+```
+
+The DSP was now unquestionably producing strong haptic PCM, but nearly every processed
+buffer overflowed the ring. The AVAudioSourceNode render callback still was not pulling.
+
+### Third Root Cause and Fix — Awaiting Remote Retest
+
+The source engine was prepared and started before ScreenCaptureKit supplied any PCM, so the
+ring contained only silence at startup. Golden Gate idled that empty output graph before
+meaningful audio arrived—the same empty-start behavior seen with AVAudioPlayerNode.
+
+The corrected lifecycle is:
+
+1. Build and prepare the AVAudioSourceNode graph, but do not start its AudioUnit.
+2. Start ScreenCaptureKit.
+3. Ignore startup silence rather than filling the ring.
+4. On the first non-silent DSP buffer, reset and prefill the ring.
+5. Only then call `engine.start()`, so the first render callback immediately receives signal.
+
+New diagnostics expose `Rendered` and `Buffered` frame counts. Added
+`testHapticSourceStartsOnlyAfterNonSilentPrefill`.
+
 ---
 
 ## 11. Test Coverage
 
-The suite currently has **72/72 passing tests**.
+The suite currently has **73/73 passing tests**.
 
 Audio-specific tests:
 
@@ -500,6 +532,9 @@ Audio-specific tests:
      stereo layouts identically.
 9. `testHapticRingBufferPreservesStereoFrames`
    - Verifies the pull-driven source-node bridge preserves ordered left/right PCM frames.
+10. `testHapticSourceStartsOnlyAfterNonSilentPrefill`
+    - Verifies the output AudioUnit remains prepared during silence and starts only after
+      meaningful haptic PCM has prefilled the ring.
 
 These tests validate state and packet construction. They do not replace physical audio
 hardware testing.
@@ -516,8 +551,9 @@ Use the rebuilt app with the controller connected through USB.
 2. Play the same video used for the failed test.
 3. Confirm both Captured Audio and Processed Haptic Output meters move.
 4. Confirm Processed continuously increases.
-5. Record the displayed input-format line and Dropped count.
-6. Confirm the controller vibrates; if not, send a screenshot of these diagnostics.
+5. Confirm Rendered continuously increases and Buffered remains bounded.
+6. Record the displayed input-format line and Dropped count.
+7. Confirm the controller vibrates; if not, send a screenshot of these diagnostics.
 
 ### A. Trigger + Audio Haptics Simultaneously
 

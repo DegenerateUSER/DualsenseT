@@ -1057,6 +1057,25 @@ class TestSuite {
             )
         }
 
+        runTest(name: "testHapticSourceStartsOnlyAfterNonSilentPrefill") {
+            try XCTAssertFalse(ControllerAudioService.shouldStartPreparedHapticsEngine(
+                isStarted: false,
+                outputPeak: 0
+            ))
+            try XCTAssertFalse(ControllerAudioService.shouldStartPreparedHapticsEngine(
+                isStarted: false,
+                outputPeak: 0.0001
+            ))
+            try XCTAssertTrue(ControllerAudioService.shouldStartPreparedHapticsEngine(
+                isStarted: false,
+                outputPeak: 0.01
+            ))
+            try XCTAssertFalse(ControllerAudioService.shouldStartPreparedHapticsEngine(
+                isStarted: true,
+                outputPeak: 0.5
+            ))
+        }
+
         runTest(name: "testBTInputReportRejectsShortBuffer") {
             let short = [UInt8](repeating: 0, count: 40)
             try XCTAssertNil(BluetoothHIDController.parseInputReport(short))

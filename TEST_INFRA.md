@@ -115,7 +115,7 @@ To execute the test suite, run the following command in the project root:
 64. `testDualSenseUSBAudioDeviceMatching`: Verifies discovery accepts Sony DualSense USB audio endpoints while rejecting Bluetooth and unrelated built-in devices.
 65. `testControllerAudioQuadraphonicReadiness`: Verifies a four-channel device with the Quadraphonic tag is recognized as L/R/Haptic-L/Haptic-R ready.
 
-### Tier 9: USB Audio Controls & Audio Haptics (7 Test Cases)
+### Tier 9: USB Audio Controls & Audio Haptics (8 Test Cases)
 66. `testUSBAudioControlsSerializeWithoutChangingTriggerOffsets`: Verifies route/volume/mute/pre-gain fields and ensures audio additions do not move adaptive-trigger offsets.
 67. `testAudioControlFlagsAreNeverSentOverBluetooth`: Verifies controller audio state cannot add USB-only audio flags or payload bytes to BT reports.
 68. `testUSBAudioHapticsModeTemporarilyReleasesClassicRumble`: Verifies the USB report switches from classic rumble (`0x0F`) to PCM haptics (`0x0D`), zeros classic motors, preserves triggers, and restores the original state.
@@ -123,15 +123,16 @@ To execute the test suite, run the following command in the project root:
 70. `testAudioHapticsModePersistsAcrossTriggerChanges`: Verifies Weapon/Feedback changes retain PCM haptics mode and the correct trigger bytes.
 71. `testAudioBufferListDecodesPlanarAndInterleavedStereo`: Verifies the production logical-channel iterator decodes Golden Gate-style planar buffers and interleaved stereo identically.
 72. `testHapticRingBufferPreservesStereoFrames`: Verifies the Golden Gate pull-driven source-node bridge preserves ordered left/right PCM frames.
+73. `testHapticSourceStartsOnlyAfterNonSilentPrefill`: Verifies the prepared Golden Gate output graph starts only after meaningful PCM has prefilled the ring.
 
 ---
 
 ## Coverage Summary
 
-- **Total Test Cases**: 72
-- **Pass Rate**: 100% (72/72)
+- **Total Test Cases**: 73
+- **Pass Rate**: 100% (73/73)
 - **Status**: Verified and Green
-- **Last Verified**: 04/09/2026 (after replacing Golden Gate AVAudioPlayerNode scheduling with a pull-driven source-node ring buffer)
+- **Last Verified**: 04/09/2026 (after non-silent ring prefill and lazy Golden Gate AudioUnit startup)
 - **Execution Log**:
   ```
   Compiling and running DualSenseT Unit Tests...
@@ -144,8 +145,8 @@ To execute the test suite, run the following command in the project root:
   ========================================
               TEST SUMMARY                
   ========================================
-    Passed: 72
+    Passed: 73
     Failed: 0
-    Total:  72
+    Total:  73
   ========================================
   ```

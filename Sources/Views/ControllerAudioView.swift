@@ -227,6 +227,8 @@ public struct ControllerAudioView: View {
                 HStack(spacing: 16) {
                     Text("Processed: \(service.hapticProcessedBuffers)")
                     Text("Dropped: \(service.hapticDroppedBuffers)")
+                    Text("Rendered: \(service.hapticRenderedFrames)")
+                    Text("Buffered: \(service.hapticBufferedFrames)")
                 }
                 .font(.system(.caption, design: .monospaced))
                 .foregroundColor(.secondary)

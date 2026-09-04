@@ -2,7 +2,7 @@
 
 > **Purpose:** This file tracks what has been done, what is in progress, and what remains.  
 > If a session ends mid-task, the next session should read this file FIRST to resume seamlessly.  
-> **Last Updated:** 04/09/2026 18:02 IST
+> **Last Updated:** 04/09/2026 18:53 IST
 
 ---
 
@@ -17,9 +17,9 @@ USB controller audio controls, system-audio capture, and audio-to-haptics stream
 implemented. Speaker, microphone, isolated haptic channels, capture meter, and streamed video
 haptics worked on physical hardware. The tab-switch/adaptive-trigger coexistence fix is
 implemented but deferred for user retest. macOS 27 Golden Gate accepted capture and planar
-decoding but never consumed AVAudioPlayerNode buffers, so continuous haptics now use a
-pull-driven AVAudioSourceNode plus bounded ring buffer. Remote retest is pending. Test suite:
-**72/72 passing**.
+decoding but idled output graphs started before meaningful PCM existed. Continuous haptics
+now prefill a bounded ring with the first non-silent buffer before starting its pull-driven
+AVAudioSourceNode. Remote retest is pending. Test suite: **73/73 passing**.
 
 ---
 
@@ -61,11 +61,18 @@ or rejected.
   stereo ring buffer now feeds AVAudioSourceNode's continuously pulled render callback—the
   same output architecture used by the verified isolated channel tests.
 - Added `testHapticRingBufferPreservesStereoFrames`.
-- **72/72 tests pass; full app bundle builds.**
+- **Third retest:** Captured `23%`, Processed Output `72%`, Processed `1,360`, Dropped
+  `1,352`. DSP output was valid, but the source engine had also been started against an empty
+  ring and its AudioUnit never pulled.
+- **Final startup fix:** prepare the graph during silence; on first non-silent PCM, reset and
+  prefill the ring, then start the AudioUnit. Added Rendered/Buffered diagnostics and
+  `testHapticSourceStartsOnlyAfterNonSilentPrefill`.
+- **73/73 tests pass; full app bundle builds.**
 
 **Next remote test**
 - [ ] Both captured and processed meters move.
-- [ ] Processed count rises past 12; dropped count stays low.
+- [ ] Processed and Rendered rise continuously; Buffered remains bounded.
+- [ ] Dropped stays near zero.
 - [ ] Controller vibrates with video audio.
 - [ ] Record the displayed PCM-format line.
 
