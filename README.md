@@ -135,8 +135,8 @@ The Audio tab uses the DualSense USB Audio Class interface. Bluetooth does not e
 
 Hardware verified: Quadraphonic setup, both haptic channels, controller speaker, controller
 microphone, capture meter, and video-driven haptics. Wired headset testing and the latest
-adaptive-trigger coexistence fix remain pending. The macOS 27 Golden Gate planar-buffer fix
-also awaits remote retest. See `USB_AUDIO_HAPTICS.md`.
+adaptive-trigger coexistence fix remain pending. The macOS 27 Golden Gate planar-buffer and
+schedule-before-play compatibility fixes also await remote retest. See `USB_AUDIO_HAPTICS.md`.
 
 ---
 

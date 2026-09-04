@@ -17,8 +17,8 @@ USB controller audio controls, system-audio capture, and audio-to-haptics stream
 implemented. Speaker, microphone, isolated haptic channels, capture meter, and streamed video
 haptics worked on physical hardware. The tab-switch/adaptive-trigger coexistence fix is
 implemented but deferred for user retest. A macOS 27 Golden Gate cross-device PCM layout
-failure has now been isolated and fixed using CoreMedia's AudioBufferList API; remote retest
-is pending. Test suite: **71/71 passing**.
+failure exposed two portability issues: buffer layout and empty-player startup. Both fixes
+are implemented; remote retest is pending. Test suite: **72/72 passing**.
 
 ---
 
@@ -49,11 +49,19 @@ or rejected.
 - Added visible remote diagnostics: captured level, processed haptic level, processed/dropped
   counts, and exact input layout.
 - Added `testAudioBufferListDecodesPlanarAndInterleavedStereo`.
-- **71/71 tests pass; full app bundle builds.**
+- **First retest:** format correctly displayed `48000 Hz Float32 · 2 ch · planar buffers
+  1+1`, but Processed stopped at exactly `12` (the queue cap) while Dropped reached `9,887`.
+  This proved decoding worked but AVAudioPlayerNode never consumed scheduled buffers.
+- **Second root cause:** `player.play()` ran before any buffer was scheduled. Golden Gate
+  leaves an empty player starved instead of consuming buffers added later.
+- **Second fix:** schedule first, then play; restart after an empty queue/underrun; release
+  capacity on `.dataConsumed`.
+- Added `testHapticPlayerStartsOnlyAfterBufferScheduling`.
+- **72/72 tests pass; full app bundle builds.**
 
 **Next remote test**
 - [ ] Both captured and processed meters move.
-- [ ] Processed count rises; dropped count stays low.
+- [ ] Processed count rises past 12; dropped count stays low.
 - [ ] Controller vibrates with video audio.
 - [ ] Record the displayed PCM-format line.
 

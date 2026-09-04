@@ -1046,6 +1046,25 @@ class TestSuite {
             try XCTAssertEqual(interleaved, expected)
         }
 
+        runTest(name: "testHapticPlayerStartsOnlyAfterBufferScheduling") {
+            try XCTAssertTrue(ControllerAudioService.shouldKickHapticPlayback(
+                queueWasEmpty: true,
+                isPlaying: false
+            ))
+            try XCTAssertTrue(ControllerAudioService.shouldKickHapticPlayback(
+                queueWasEmpty: true,
+                isPlaying: true
+            ))
+            try XCTAssertTrue(ControllerAudioService.shouldKickHapticPlayback(
+                queueWasEmpty: false,
+                isPlaying: false
+            ))
+            try XCTAssertFalse(ControllerAudioService.shouldKickHapticPlayback(
+                queueWasEmpty: false,
+                isPlaying: true
+            ))
+        }
+
         runTest(name: "testBTInputReportRejectsShortBuffer") {
             let short = [UInt8](repeating: 0, count: 40)
             try XCTAssertNil(BluetoothHIDController.parseInputReport(short))

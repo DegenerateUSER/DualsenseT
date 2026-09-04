@@ -481,7 +481,6 @@ public final class ControllerAudioService: ObservableObject {
             lastError = "Could not start the haptic output engine: \(error.localizedDescription)"
             return
         }
-        player.play()
 
         hapticLowPassHigh = (0, 0)
         hapticLowPassLow = (0, 0)
@@ -549,6 +548,7 @@ public final class ControllerAudioService: ObservableObject {
 
         scheduledBufferLock.lock()
         let queueIsFull = scheduledBufferCount >= 12
+        let queueWasEmpty = scheduledBufferCount == 0
         if !queueIsFull {
             scheduledBufferCount += 1
         }
@@ -645,9 +645,28 @@ public final class ControllerAudioService: ObservableObject {
         hapticLowPassLow = (lowL, lowR)
         processedBufferCounter += 1
         publishHapticDiagnostics(outputPeak: outputPeak)
-        player.scheduleBuffer(outputBuffer) { [weak self] in
+        player.scheduleBuffer(
+            outputBuffer,
+            completionCallbackType: .dataConsumed
+        ) { [weak self] _ in
             self?.decrementScheduledBufferCount()
         }
+        // Golden Gate does not reliably begin consuming buffers when play() was called
+        // before anything was scheduled. Prime first, then start; kick again after any
+        // underrun when the queue transitions from empty to non-empty.
+        if Self.shouldKickHapticPlayback(
+            queueWasEmpty: queueWasEmpty,
+            isPlaying: player.isPlaying
+        ) {
+            player.play()
+        }
+    }
+
+    static func shouldKickHapticPlayback(
+        queueWasEmpty: Bool,
+        isPlaying: Bool
+    ) -> Bool {
+        queueWasEmpty || !isPlaying
     }
 
     /// Iterates the first two logical channels using the AudioBufferList as the source of

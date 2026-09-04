@@ -2,7 +2,7 @@
 
 > **Purpose:** Technical handoff and hardware-validation record for the USB audio feature.  
 > **Last Updated:** 04/09/2026 18:02 IST
-> **Current State:** Golden Gate buffer-layout compatibility fix implemented and awaiting
+> **Current State:** Golden Gate AVAudioPlayerNode priming fix implemented and awaiting
 > remote hardware retest. Core
 > discovery, Quadraphonic setup, controller speaker, microphone, isolated haptic channels,
 > system-audio capture, and audio-to-haptics streaming have worked on physical hardware.
@@ -402,11 +402,47 @@ Dropped: ideally 0 or low
 Input format: 48000 Hz Float32 · 2 ch · planar/interleaved ...
 ```
 
+### Remote Result After AudioBufferList Fix
+
+The Golden Gate retest screenshot showed:
+
+```text
+Captured Audio: 3% and moving
+Processed Haptic Output: 0%
+Processed: 12
+Dropped: 9,887
+Input format: 48000 Hz Float32 · 2 ch · planar buffers 1+1
+```
+
+This proved the portable planar decoder was working—the format was identified and 12 buffers
+passed through it. `12` is also the exact scheduler queue cap. Since the count stopped there
+and every later buffer was dropped, AVAudioPlayerNode never consumed the first queued
+buffers; its completion callbacks never fired.
+
+### Second Root Cause
+
+The output player called `play()` immediately after AVAudioEngine started, before any PCM
+buffer had been scheduled. Older macOS behavior accepted later buffers. On Golden Gate, the
+empty player remained starved and did not begin consuming buffers scheduled afterward.
+
+### Second Fix — Awaiting Remote Retest
+
+- Removed the premature `player.play()` call from engine setup.
+- Schedule the first processed buffer before starting playback.
+- Kick playback whenever the queue transitions from empty to non-empty or `isPlaying` is
+  false, recovering from underruns.
+- Use `.dataConsumed` completion callbacks so queue capacity is released as soon as the
+  player accepts each buffer.
+- Added `testHapticPlayerStartsOnlyAfterBufferScheduling`.
+
+Expected result: Processed must rise continuously instead of stopping at 12, Dropped should
+remain near zero, Processed Haptic Output should move, and the controller should vibrate.
+
 ---
 
 ## 11. Test Coverage
 
-The suite currently has **71/71 passing tests**.
+The suite currently has **72/72 passing tests**.
 
 Audio-specific tests:
 
@@ -429,6 +465,9 @@ Audio-specific tests:
 8. `testAudioBufferListDecodesPlanarAndInterleavedStereo`
    - Verifies the production channel iterator reads separate planar and combined interleaved
      stereo layouts identically.
+9. `testHapticPlayerStartsOnlyAfterBufferScheduling`
+   - Locks the Golden Gate requirement that PCM is scheduled before playback starts and that
+     an empty/stopped queue is restarted.
 
 These tests validate state and packet construction. They do not replace physical audio
 hardware testing.

@@ -115,22 +115,23 @@ To execute the test suite, run the following command in the project root:
 64. `testDualSenseUSBAudioDeviceMatching`: Verifies discovery accepts Sony DualSense USB audio endpoints while rejecting Bluetooth and unrelated built-in devices.
 65. `testControllerAudioQuadraphonicReadiness`: Verifies a four-channel device with the Quadraphonic tag is recognized as L/R/Haptic-L/Haptic-R ready.
 
-### Tier 9: USB Audio Controls & Audio Haptics (6 Test Cases)
+### Tier 9: USB Audio Controls & Audio Haptics (7 Test Cases)
 66. `testUSBAudioControlsSerializeWithoutChangingTriggerOffsets`: Verifies route/volume/mute/pre-gain fields and ensures audio additions do not move adaptive-trigger offsets.
 67. `testAudioControlFlagsAreNeverSentOverBluetooth`: Verifies controller audio state cannot add USB-only audio flags or payload bytes to BT reports.
 68. `testUSBAudioHapticsModeTemporarilyReleasesClassicRumble`: Verifies the USB report switches from classic rumble (`0x0F`) to PCM haptics (`0x0D`), zeros classic motors, preserves triggers, and restores the original state.
 69. `testSystemAudioMeterNormalization`: Verifies captured RMS values clamp and scale safely into the `0...1` level meter.
 70. `testAudioHapticsModePersistsAcrossTriggerChanges`: Verifies Weapon/Feedback changes retain PCM haptics mode and the correct trigger bytes.
 71. `testAudioBufferListDecodesPlanarAndInterleavedStereo`: Verifies the production logical-channel iterator decodes Golden Gate-style planar buffers and interleaved stereo identically.
+72. `testHapticPlayerStartsOnlyAfterBufferScheduling`: Verifies Golden Gate playback is kicked only after PCM has been scheduled and restarts after an empty queue/underrun.
 
 ---
 
 ## Coverage Summary
 
-- **Total Test Cases**: 71
-- **Pass Rate**: 100% (71/71)
+- **Total Test Cases**: 72
+- **Pass Rate**: 100% (72/72)
 - **Status**: Verified and Green
-- **Last Verified**: 04/09/2026 (after macOS 27 AudioBufferList compatibility fix)
+- **Last Verified**: 04/09/2026 (after macOS 27 AVAudioPlayerNode priming fix)
 - **Execution Log**:
   ```
   Compiling and running DualSenseT Unit Tests...
@@ -143,8 +144,8 @@ To execute the test suite, run the following command in the project root:
   ========================================
               TEST SUMMARY                
   ========================================
-    Passed: 71
+    Passed: 72
     Failed: 0
-    Total:  71
+    Total:  72
   ========================================
   ```
