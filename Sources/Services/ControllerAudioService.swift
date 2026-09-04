@@ -87,11 +87,10 @@ public final class ControllerAudioService: ObservableObject {
     private var testSourceNode: AVAudioSourceNode?
     private var testStopWorkItem: DispatchWorkItem?
     private var hapticsEngine: AVAudioEngine?
-    private var hapticsPlayer: AVAudioPlayerNode?
+    private var hapticsSourceNode: AVAudioSourceNode?
+    private var hapticsRingBuffer: HapticStereoRingBuffer?
     private var hapticsFormat: AVAudioFormat?
     private weak var hapticsCaptureService: SystemAudioCaptureService?
-    private let scheduledBufferLock = NSLock()
-    private var scheduledBufferCount = 0
     private var hapticLowPassHigh: (Float, Float) = (0, 0)
     private var hapticLowPassLow: (Float, Float) = (0, 0)
     private var processedBufferCounter = 0
@@ -438,7 +437,6 @@ public final class ControllerAudioService: ObservableObject {
         }
 
         let engine = AVAudioEngine()
-        let player = AVAudioPlayerNode()
         let outputNode = engine.outputNode
         guard let outputUnit = outputNode.audioUnit else {
             lastError = "CoreAudio did not create a haptic output AudioUnit."
@@ -471,9 +469,18 @@ public final class ControllerAudioService: ObservableObject {
             interleaved: false,
             channelLayout: layout
         )
+        let ringBuffer = HapticStereoRingBuffer(capacityFrames: 8_192)
+        let sourceNode = AVAudioSourceNode(format: format) {
+            _, _, frameCount, audioBufferList -> OSStatus in
+            ringBuffer.render(
+                frameCount: Int(frameCount),
+                into: UnsafeMutableAudioBufferListPointer(audioBufferList)
+            )
+            return noErr
+        }
 
-        engine.attach(player)
-        engine.connect(player, to: outputNode, format: format)
+        engine.attach(sourceNode)
+        engine.connect(sourceNode, to: outputNode, format: format)
         engine.prepare()
         do {
             try engine.start()
@@ -484,7 +491,6 @@ public final class ControllerAudioService: ObservableObject {
 
         hapticLowPassHigh = (0, 0)
         hapticLowPassLow = (0, 0)
-        scheduledBufferCount = 0
         processedBufferCounter = 0
         droppedBufferCounter = 0
         hapticInputFormatSnapshot = "Waiting for captured PCM…"
@@ -495,7 +501,8 @@ public final class ControllerAudioService: ObservableObject {
         hapticDroppedBuffers = 0
         hapticOutputLevel = 0
         hapticsEngine = engine
-        hapticsPlayer = player
+        hapticsSourceNode = sourceNode
+        hapticsRingBuffer = ringBuffer
         hapticsFormat = format
         hapticsCaptureService = captureService
         captureService.setSampleHandler { [weak self] sampleBuffer in
@@ -514,15 +521,13 @@ public final class ControllerAudioService: ObservableObject {
     public func stopAudioHaptics() {
         hapticsCaptureService?.setSampleHandler(nil)
         hapticsCaptureService = nil
-        hapticsPlayer?.stop()
         hapticsEngine?.stop()
         hapticsEngine?.reset()
-        hapticsPlayer = nil
+        hapticsRingBuffer?.reset()
+        hapticsSourceNode = nil
+        hapticsRingBuffer = nil
         hapticsEngine = nil
         hapticsFormat = nil
-        scheduledBufferLock.lock()
-        scheduledBufferCount = 0
-        scheduledBufferLock.unlock()
         if isAudioHapticsRunning {
             logToFile("ControllerAudioService: audio haptics stopped.")
         }
@@ -533,7 +538,7 @@ public final class ControllerAudioService: ObservableObject {
 
     private func processAudioHaptics(_ sampleBuffer: CMSampleBuffer) {
         guard isAudioHapticsRunning,
-              let player = hapticsPlayer,
+              let ringBuffer = hapticsRingBuffer,
               let format = hapticsFormat,
               let description = CMSampleBufferGetFormatDescription(sampleBuffer),
               let inputFormat = CMAudioFormatDescriptionGetStreamBasicDescription(description)?.pointee,
@@ -546,19 +551,6 @@ public final class ControllerAudioService: ObservableObject {
             return
         }
 
-        scheduledBufferLock.lock()
-        let queueIsFull = scheduledBufferCount >= 12
-        let queueWasEmpty = scheduledBufferCount == 0
-        if !queueIsFull {
-            scheduledBufferCount += 1
-        }
-        scheduledBufferLock.unlock()
-        guard !queueIsFull else {
-            droppedBufferCounter += 1
-            publishHapticDiagnostics(outputPeak: 0)
-            return
-        }
-
         let frameCount = CMSampleBufferGetNumSamples(sampleBuffer)
         guard frameCount > 0,
               let outputBuffer = AVAudioPCMBuffer(
@@ -566,7 +558,6 @@ public final class ControllerAudioService: ObservableObject {
                 frameCapacity: AVAudioFrameCount(frameCount)
               ),
               let outputChannels = outputBuffer.floatChannelData else {
-            decrementScheduledBufferCount()
             return
         }
 
@@ -623,7 +614,6 @@ public final class ControllerAudioService: ObservableObject {
                 }
             }
         } catch {
-            decrementScheduledBufferCount()
             droppedBufferCounter += 1
             reportHapticPipelineError(
                 "Could not access captured AudioBufferList: \(error.localizedDescription)"
@@ -632,7 +622,6 @@ public final class ControllerAudioService: ObservableObject {
         }
 
         guard processedFrames > 0 else {
-            decrementScheduledBufferCount()
             droppedBufferCounter += 1
             reportHapticPipelineError(
                 "Captured AudioBufferList contained no readable Float32 frames."
@@ -644,29 +633,15 @@ public final class ControllerAudioService: ObservableObject {
         hapticLowPassHigh = (highL, highR)
         hapticLowPassLow = (lowL, lowR)
         processedBufferCounter += 1
+        let acceptedWithoutOverflow = ringBuffer.write(
+            left: outputChannels[2],
+            right: outputChannels[3],
+            frameCount: processedFrames
+        )
+        if !acceptedWithoutOverflow {
+            droppedBufferCounter += 1
+        }
         publishHapticDiagnostics(outputPeak: outputPeak)
-        player.scheduleBuffer(
-            outputBuffer,
-            completionCallbackType: .dataConsumed
-        ) { [weak self] _ in
-            self?.decrementScheduledBufferCount()
-        }
-        // Golden Gate does not reliably begin consuming buffers when play() was called
-        // before anything was scheduled. Prime first, then start; kick again after any
-        // underrun when the queue transitions from empty to non-empty.
-        if Self.shouldKickHapticPlayback(
-            queueWasEmpty: queueWasEmpty,
-            isPlaying: player.isPlaying
-        ) {
-            player.play()
-        }
-    }
-
-    static func shouldKickHapticPlayback(
-        queueWasEmpty: Bool,
-        isPlaying: Bool
-    ) -> Bool {
-        queueWasEmpty || !isPlaying
     }
 
     /// Iterates the first two logical channels using the AudioBufferList as the source of
@@ -773,6 +748,29 @@ public final class ControllerAudioService: ObservableObject {
             return decoded
         }
     }
+
+    public static func testHapticRingBufferRoundTrip(
+        left: [Float],
+        right: [Float]
+    ) -> [Float] {
+        var left = left
+        var right = right
+        let frameCount = min(left.count, right.count)
+        let ring = HapticStereoRingBuffer(capacityFrames: max(256, frameCount))
+        left.withUnsafeMutableBufferPointer { leftBuffer in
+            right.withUnsafeMutableBufferPointer { rightBuffer in
+                if let leftBase = leftBuffer.baseAddress,
+                   let rightBase = rightBuffer.baseAddress {
+                    _ = ring.write(
+                        left: leftBase,
+                        right: rightBase,
+                        frameCount: frameCount
+                    )
+                }
+            }
+        }
+        return ring.testRead(frameCount: frameCount)
+    }
     #endif
 
     private func publishHapticDiagnostics(outputPeak: Float) {
@@ -804,12 +802,6 @@ public final class ControllerAudioService: ObservableObject {
             self?.lastError = message
             self?.audioHapticsStatus = message
         }
-    }
-
-    private func decrementScheduledBufferCount() {
-        scheduledBufferLock.lock()
-        scheduledBufferCount = max(0, scheduledBufferCount - 1)
-        scheduledBufferLock.unlock()
     }
 
     private static func allAudioDeviceIDs() -> [AudioDeviceID]? {
@@ -994,6 +986,152 @@ public final class ControllerAudioService: ObservableObject {
         }
         return String(format: "%d", status)
     }
+}
+
+/// Bounded single-producer/single-consumer bridge between ScreenCaptureKit's callback queue
+/// and AVAudioSourceNode's real-time render callback. Storage is allocated once. An NSLock
+/// protects indices and short memory copies; replacing it with atomics is a later RT hardening
+/// step, but unlike AVAudioPlayerNode this source remains continuously pull-driven on Golden Gate.
+private final class HapticStereoRingBuffer {
+    private let capacityFrames: Int
+    private let samples: UnsafeMutablePointer<Float>
+    private let lock = NSLock()
+    private var readIndex = 0
+    private var writeIndex = 0
+    private var availableFrames = 0
+
+    init(capacityFrames: Int) {
+        self.capacityFrames = max(256, capacityFrames)
+        self.samples = UnsafeMutablePointer<Float>.allocate(
+            capacity: self.capacityFrames * 2
+        )
+        self.samples.initialize(repeating: 0, count: self.capacityFrames * 2)
+    }
+
+    deinit {
+        samples.deinitialize(count: capacityFrames * 2)
+        samples.deallocate()
+    }
+
+    /// Returns false if old frames had to be discarded to keep latency bounded.
+    func write(
+        left: UnsafePointer<Float>,
+        right: UnsafePointer<Float>,
+        frameCount: Int
+    ) -> Bool {
+        guard frameCount > 0 else { return true }
+        let framesToWrite = min(frameCount, capacityFrames)
+        let sourceOffset = frameCount - framesToWrite
+
+        lock.lock()
+        defer { lock.unlock() }
+
+        let overflowFrames = max(
+            0,
+            availableFrames + framesToWrite - capacityFrames
+        )
+        if overflowFrames > 0 {
+            readIndex = (readIndex + overflowFrames) % capacityFrames
+            availableFrames -= overflowFrames
+        }
+
+        for frame in 0..<framesToWrite {
+            let destination = writeIndex * 2
+            let source = sourceOffset + frame
+            samples[destination] = left[source]
+            samples[destination + 1] = right[source]
+            writeIndex = (writeIndex + 1) % capacityFrames
+        }
+        availableFrames += framesToWrite
+        return overflowFrames == 0
+    }
+
+    func render(
+        frameCount: Int,
+        into buffers: UnsafeMutableAudioBufferListPointer
+    ) {
+        guard frameCount > 0 else { return }
+
+        // Always silence audible channels and any unused tail if the ring underruns.
+        for buffer in buffers {
+            if let data = buffer.mData {
+                memset(data, 0, Int(buffer.mDataByteSize))
+            }
+        }
+
+        lock.lock()
+        defer { lock.unlock() }
+
+        let framesToRead = min(frameCount, availableFrames)
+        for frame in 0..<framesToRead {
+            let source = readIndex * 2
+            set(
+                samples[source],
+                logicalChannel: 2,
+                frame: frame,
+                in: buffers
+            )
+            set(
+                samples[source + 1],
+                logicalChannel: 3,
+                frame: frame,
+                in: buffers
+            )
+            readIndex = (readIndex + 1) % capacityFrames
+        }
+        availableFrames -= framesToRead
+    }
+
+    func reset() {
+        lock.lock()
+        readIndex = 0
+        writeIndex = 0
+        availableFrames = 0
+        lock.unlock()
+    }
+
+    private func set(
+        _ value: Float,
+        logicalChannel: Int,
+        frame: Int,
+        in buffers: UnsafeMutableAudioBufferListPointer
+    ) {
+        var firstLogicalChannel = 0
+        for buffer in buffers {
+            let channelsInBuffer = max(1, Int(buffer.mNumberChannels))
+            let nextLogicalChannel = firstLogicalChannel + channelsInBuffer
+            defer { firstLogicalChannel = nextLogicalChannel }
+            guard logicalChannel >= firstLogicalChannel,
+                  logicalChannel < nextLogicalChannel,
+                  let data = buffer.mData?.assumingMemoryBound(to: Float.self) else {
+                continue
+            }
+
+            let channelInBuffer = logicalChannel - firstLogicalChannel
+            let sampleIndex = frame * channelsInBuffer + channelInBuffer
+            let availableSamples =
+                Int(buffer.mDataByteSize) / MemoryLayout<Float>.size
+            guard sampleIndex < availableSamples else { return }
+            data[sampleIndex] = value
+            return
+        }
+    }
+
+    #if TESTING
+    func testRead(frameCount: Int) -> [Float] {
+        lock.lock()
+        defer { lock.unlock() }
+        let count = min(frameCount, availableFrames)
+        var result: [Float] = []
+        result.reserveCapacity(count * 2)
+        for frame in 0..<count {
+            let index = ((readIndex + frame) % capacityFrames) * 2
+            result.append(samples[index])
+            result.append(samples[index + 1])
+        }
+        return result
+    }
+    #endif
 }
 
 /// Mutable state intentionally owned by the real-time render callback. It is allocated before

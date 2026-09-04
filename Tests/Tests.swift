@@ -1046,23 +1046,15 @@ class TestSuite {
             try XCTAssertEqual(interleaved, expected)
         }
 
-        runTest(name: "testHapticPlayerStartsOnlyAfterBufferScheduling") {
-            try XCTAssertTrue(ControllerAudioService.shouldKickHapticPlayback(
-                queueWasEmpty: true,
-                isPlaying: false
-            ))
-            try XCTAssertTrue(ControllerAudioService.shouldKickHapticPlayback(
-                queueWasEmpty: true,
-                isPlaying: true
-            ))
-            try XCTAssertTrue(ControllerAudioService.shouldKickHapticPlayback(
-                queueWasEmpty: false,
-                isPlaying: false
-            ))
-            try XCTAssertFalse(ControllerAudioService.shouldKickHapticPlayback(
-                queueWasEmpty: false,
-                isPlaying: true
-            ))
+        runTest(name: "testHapticRingBufferPreservesStereoFrames") {
+            let output = ControllerAudioService.testHapticRingBufferRoundTrip(
+                left: [0.1, 0.2, 0.3],
+                right: [-0.1, -0.2, -0.3]
+            )
+            try XCTAssertEqual(
+                output,
+                [0.1, -0.1, 0.2, -0.2, 0.3, -0.3]
+            )
         }
 
         runTest(name: "testBTInputReportRejectsShortBuffer") {

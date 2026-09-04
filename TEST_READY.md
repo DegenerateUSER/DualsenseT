@@ -17,4 +17,4 @@ Run:
 ## Summary
 - **Total Mapped Test Cases**: 72
 - **Pass Status**: 🟢 PASSING (72 / 72 passed)
-- **Last Verification Timestamp**: 04/09/2026 18:17:00 IST (Golden Gate playback now schedules PCM before starting AVAudioPlayerNode and restarts after queue underruns; remote M1 hardware retest pending)
+- **Last Verification Timestamp**: 04/09/2026 18:39:00 IST (Golden Gate continuous haptics now use AVAudioSourceNode with a bounded stereo ring buffer after AVAudioPlayerNode remained starved; remote M1 hardware retest pending)

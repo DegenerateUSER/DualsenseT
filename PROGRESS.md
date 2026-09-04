@@ -16,9 +16,10 @@ The high-rate input/UI path has since been optimized without changing HID output
 USB controller audio controls, system-audio capture, and audio-to-haptics streaming are now
 implemented. Speaker, microphone, isolated haptic channels, capture meter, and streamed video
 haptics worked on physical hardware. The tab-switch/adaptive-trigger coexistence fix is
-implemented but deferred for user retest. A macOS 27 Golden Gate cross-device PCM layout
-failure exposed two portability issues: buffer layout and empty-player startup. Both fixes
-are implemented; remote retest is pending. Test suite: **72/72 passing**.
+implemented but deferred for user retest. macOS 27 Golden Gate accepted capture and planar
+decoding but never consumed AVAudioPlayerNode buffers, so continuous haptics now use a
+pull-driven AVAudioSourceNode plus bounded ring buffer. Remote retest is pending. Test suite:
+**72/72 passing**.
 
 ---
 
@@ -52,11 +53,14 @@ or rejected.
 - **First retest:** format correctly displayed `48000 Hz Float32 · 2 ch · planar buffers
   1+1`, but Processed stopped at exactly `12` (the queue cap) while Dropped reached `9,887`.
   This proved decoding worked but AVAudioPlayerNode never consumed scheduled buffers.
-- **Second root cause:** `player.play()` ran before any buffer was scheduled. Golden Gate
-  leaves an empty player starved instead of consuming buffers added later.
-- **Second fix:** schedule first, then play; restart after an empty queue/underrun; release
-  capacity on `.dataConsumed`.
-- Added `testHapticPlayerStartsOnlyAfterBufferScheduling`.
+- **Second hypothesis/fix:** schedule before `player.play()`, restart after underruns, and
+  release on `.dataConsumed`.
+- **Second retest:** still stopped at Processed `12`, Dropped `240`; AVAudioPlayerNode
+  remained starved. The timing workaround was rejected.
+- **Final architecture:** removed AVAudioPlayerNode from continuous haptics. A preallocated
+  stereo ring buffer now feeds AVAudioSourceNode's continuously pulled render callback—the
+  same output architecture used by the verified isolated channel tests.
+- Added `testHapticRingBufferPreservesStereoFrames`.
 - **72/72 tests pass; full app bundle builds.**
 
 **Next remote test**

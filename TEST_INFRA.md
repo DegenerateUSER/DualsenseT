@@ -122,7 +122,7 @@ To execute the test suite, run the following command in the project root:
 69. `testSystemAudioMeterNormalization`: Verifies captured RMS values clamp and scale safely into the `0...1` level meter.
 70. `testAudioHapticsModePersistsAcrossTriggerChanges`: Verifies Weapon/Feedback changes retain PCM haptics mode and the correct trigger bytes.
 71. `testAudioBufferListDecodesPlanarAndInterleavedStereo`: Verifies the production logical-channel iterator decodes Golden Gate-style planar buffers and interleaved stereo identically.
-72. `testHapticPlayerStartsOnlyAfterBufferScheduling`: Verifies Golden Gate playback is kicked only after PCM has been scheduled and restarts after an empty queue/underrun.
+72. `testHapticRingBufferPreservesStereoFrames`: Verifies the Golden Gate pull-driven source-node bridge preserves ordered left/right PCM frames.
 
 ---
 
@@ -131,7 +131,7 @@ To execute the test suite, run the following command in the project root:
 - **Total Test Cases**: 72
 - **Pass Rate**: 100% (72/72)
 - **Status**: Verified and Green
-- **Last Verified**: 04/09/2026 (after macOS 27 AVAudioPlayerNode priming fix)
+- **Last Verified**: 04/09/2026 (after replacing Golden Gate AVAudioPlayerNode scheduling with a pull-driven source-node ring buffer)
 - **Execution Log**:
   ```
   Compiling and running DualSenseT Unit Tests...

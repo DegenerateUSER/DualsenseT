@@ -2,7 +2,7 @@
 
 > **Purpose:** Technical handoff and hardware-validation record for the USB audio feature.  
 > **Last Updated:** 04/09/2026 18:02 IST
-> **Current State:** Golden Gate AVAudioPlayerNode priming fix implemented and awaiting
+> **Current State:** Golden Gate pull-driven AVAudioSourceNode/ring-buffer fix implemented and awaiting
 > remote hardware retest. Core
 > discovery, Quadraphonic setup, controller speaker, microphone, isolated haptic channels,
 > system-audio capture, and audio-to-haptics streaming have worked on physical hardware.
@@ -433,10 +433,43 @@ empty player remained starved and did not begin consuming buffers scheduled afte
   false, recovering from underruns.
 - Use `.dataConsumed` completion callbacks so queue capacity is released as soon as the
   player accepts each buffer.
-- Added `testHapticPlayerStartsOnlyAfterBufferScheduling`.
+- Added an initial player-start policy regression (superseded by the ring-buffer test below).
 
 Expected result: Processed must rise continuously instead of stopping at 12, Dropped should
 remain near zero, Processed Haptic Output should move, and the controller should vibrate.
+
+### Remote Result After Schedule-Before-Play Fix
+
+The second screenshot still showed:
+
+```text
+Captured Audio: 77%
+Processed Haptic Output: 0%
+Processed: 12
+Dropped: 240
+Input format: 48000 Hz Float32 · 2 ch · planar buffers 1+1
+```
+
+Scheduling before `play()` was therefore insufficient. AVAudioPlayerNode still never
+consumed its first 12 buffers on Golden Gate.
+
+### Final Architecture Change — Awaiting Remote Retest
+
+AVAudioPlayerNode scheduling has been removed from continuous haptics entirely.
+
+- The output now uses `AVAudioSourceNode`, the same pull-driven AudioUnit path already proven
+  by the working isolated Haptic L/R tests on the Golden Gate Mac.
+- A bounded, preallocated stereo ring buffer bridges the ScreenCaptureKit producer to the
+  AudioUnit render callback.
+- The source node continuously renders: channels 1/2 are zero; ring-buffer left/right are
+  written to channels 3/4.
+- Capture can no longer deadlock at an arbitrary scheduled-buffer count.
+- Ring overflow discards oldest frames to bound latency; it increments Dropped for diagnosis.
+- Added `testHapticRingBufferPreservesStereoFrames`.
+
+The ring currently uses a short `NSLock` around preallocated memory copies. That is suitable
+for this validation build; a lock-free atomic SPSC buffer remains the production-hardening
+target.
 
 ---
 
@@ -465,9 +498,8 @@ Audio-specific tests:
 8. `testAudioBufferListDecodesPlanarAndInterleavedStereo`
    - Verifies the production channel iterator reads separate planar and combined interleaved
      stereo layouts identically.
-9. `testHapticPlayerStartsOnlyAfterBufferScheduling`
-   - Locks the Golden Gate requirement that PCM is scheduled before playback starts and that
-     an empty/stopped queue is restarted.
+9. `testHapticRingBufferPreservesStereoFrames`
+   - Verifies the pull-driven source-node bridge preserves ordered left/right PCM frames.
 
 These tests validate state and packet construction. They do not replace physical audio
 hardware testing.
@@ -536,6 +568,8 @@ When a wired 3.5 mm headset is available:
 - The capture path allocates an `AVAudioPCMBuffer` per incoming buffer. This is off the
   AudioUnit render thread but should be replaced by a preallocated ring-buffer pool if CPU,
   allocations, or latency are high.
+- The current ring buffer uses `NSLock`; replace it with atomic single-producer/single-consumer
+  indices after cross-device correctness is confirmed.
 - Queue depth is bounded, but long-session clock drift between ScreenCaptureKit and the
   DualSense output device has not been measured.
 - Audio intensity is read across queues; production hardening should use a small synchronized
