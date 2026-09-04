@@ -17,4 +17,4 @@ Run:
 ## Summary
 - **Total Mapped Test Cases**: 73
 - **Pass Status**: 🟢 PASSING (73 / 73 passed)
-- **Last Verification Timestamp**: 04/09/2026 18:52:00 IST (Golden Gate output AudioUnit now starts only after the first non-silent PCM buffer prefills its source-node ring; remote M1 hardware retest pending)
+- **Last Verification Timestamp**: 04/09/2026 19:02:00 IST (system-audio haptics and simultaneous adaptive-trigger modes hardware-confirmed on a base M1 MacBook Air running macOS 27 Golden Gate)

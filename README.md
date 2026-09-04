@@ -2,7 +2,8 @@
 
 DualSenseT is a high-performance, source-available macOS utility designed to customize, test, monitor, and integrate the PlayStation 5 DualSense and DualSense Edge controllers. It serves as a native macOS alternative to software like *DualSenseM* and Windows-only utilities like *DualSenseX*. An OSI license is planned before the project is marketed as open source.
 
-The application operates in a dual mode: as a lightweight system **Menu Bar Helper** that runs persistently in the background, and as a rich **SwiftUI Dashboard** offering granular customization and real-time sensor diagnostics.
+The application provides both a standard **Dock app / SwiftUI Dashboard** and a lightweight
+**Menu Bar Helper** that remains available for status and quick actions.
 
 ---
 
@@ -40,13 +41,16 @@ The application operates in a dual mode: as a lightweight system **Menu Bar Help
 ## Dual-Mode Architecture
 
 ### 1. Menu Bar Helper
-On launch, DualSenseT runs as a status item in the macOS Menu Bar. 
+On launch, DualSenseT also runs as a status item in the macOS Menu Bar.
 * **Live Status:** Displays connection type and battery percentage (e.g. `[BT] 85%` or `[USB] 100%`).
 * **Quick Action Presets:** Click the menu icon to switch between default presets (e.g. Bow & Arrow, Heavy Rifle, Racing Brake, Machine Gun, Semi-Auto Pistol, and more) instantly without opening the dashboard.
 * **Window Controls:** Open the main configuration dashboard or quit the app cleanly.
 
 ### 2. Main Dashboard Window
-A clean, premium, semi-transparent SwiftUI dashboard. You can close the main dashboard window at any time; the app continues monitoring profile triggers and running the UDP server from the menu bar.
+A clean, premium, semi-transparent SwiftUI dashboard with a normal Dock icon. Closing the
+window hides it without stopping controller profiles, audio haptics, or the UDP server.
+Clicking the Dock icon reopens it. Quit through **⌘Q**, the application menu, the Dock
+context menu, or the menu-bar helper.
 
 ---
 
@@ -134,10 +138,9 @@ The Audio tab uses the DualSense USB Audio Class interface. Bluetooth does not e
   supplies planar, interleaved, or mono Float32 samples.
 
 Hardware verified: Quadraphonic setup, both haptic channels, controller speaker, controller
-microphone, capture meter, and video-driven haptics. Wired headset testing and the latest
-adaptive-trigger coexistence fix remain pending. The macOS 27 Golden Gate planar-buffer,
-pull-driven source-node, and non-silent prefill compatibility fixes await remote retest. See
-`USB_AUDIO_HAPTICS.md`.
+microphone, capture meter, video-driven haptics, and simultaneous adaptive-trigger effects on
+a base M1 MacBook Air running macOS 27 Golden Gate. Wired headset and long-run
+stability/reconnect testing remain pending. See `USB_AUDIO_HAPTICS.md`.
 
 ---
 
@@ -213,7 +216,7 @@ faster than a display can render. To avoid wasting CPU while preserving controll
 ### Raw HID Background Override
 The macOS `GameController` framework ceases sending output reports to controllers when the host application loses window focus. To keep adaptive triggers active when you click away to play a game, DualSenseT implements a multi-layered persistence system:
 
-1. **Dual Focus Detection:** Monitors both `NSApplication.didResignActiveNotification` and `NSWorkspace.didActivateApplicationNotification` to reliably detect focus loss — even for apps running in `.accessory` mode without a Dock icon.
+1. **Dual Focus Detection:** Monitors both `NSApplication.didResignActiveNotification` and `NSWorkspace.didActivateApplicationNotification` to reliably detect focus loss.
 2. **Exponential Backoff Burst:** On focus loss, immediately fires 8 HID reports at 0/30/60/100/200/500/1000/2000ms intervals to win the race against macOS and GameController framework resets.
 3. **Adaptive Background Timer:** Starts at 50ms polling for the first 3 seconds (critical window), then settles to 500ms for sustained background operation.
 4. **Stale Device Recovery:** If an HID write fails, automatically clears the cached device handle, resets the Bluetooth sequence number, and retries with a freshly discovered device.

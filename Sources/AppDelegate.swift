@@ -16,7 +16,8 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     public func applicationDidFinishLaunching(_ notification: Notification) {
         GCController.shouldMonitorBackgroundEvents = true
         #if !TESTING
-        NSApp.setActivationPolicy(.accessory)
+        NSApp.setActivationPolicy(.regular)
+        setupMainMenu()
         setupMenuBar()
         showMainWindow()
         
@@ -53,9 +54,8 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             #endif
         }
         
-        // Fallback: observe workspace-level app activations (more reliable for .accessory apps)
-        // NSApplication.didResignActiveNotification may not fire for apps without a dock icon,
-        // so we also watch when ANY other app becomes frontmost.
+        // Fallback: also observe workspace-level activations. This catches full-screen game
+        // and rapid app-switch transitions where didResignActive can arrive late.
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil,
@@ -85,6 +85,35 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             self.controllerManager.isAppInForeground = true
             self.controllerManager.applyTriggerSettings()
         }
+    }
+
+    /// The app constructs NSApplication manually, so provide the standard application
+    /// menu explicitly. This restores discoverable ⌘O/⌘Q actions in Dock mode.
+    public func setupMainMenu() {
+        let mainMenu = NSMenu()
+        let appMenuItem = NSMenuItem()
+        mainMenu.addItem(appMenuItem)
+
+        let appMenu = NSMenu()
+        let showItem = NSMenuItem(
+            title: "Open DualSenseT",
+            action: #selector(showMainWindow),
+            keyEquivalent: "o"
+        )
+        showItem.target = self
+        appMenu.addItem(showItem)
+        appMenu.addItem(.separator())
+
+        let quitItem = NSMenuItem(
+            title: "Quit DualSenseT",
+            action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q"
+        )
+        quitItem.target = NSApp
+        appMenu.addItem(quitItem)
+
+        appMenuItem.submenu = appMenu
+        NSApp.mainMenu = mainMenu
     }
     
     public func setupMenuBar() {
@@ -228,6 +257,16 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             window.isVisible
             && !window.isMiniaturized
             && window.occlusionState.contains(.visible)
+    }
+
+    public func applicationShouldHandleReopen(
+        _ sender: NSApplication,
+        hasVisibleWindows flag: Bool
+    ) -> Bool {
+        if !flag {
+            showMainWindow()
+        }
+        return true
     }
     
     @objc public func quitApp() {

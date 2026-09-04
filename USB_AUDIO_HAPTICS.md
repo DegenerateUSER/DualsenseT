@@ -1,12 +1,12 @@
 # DualSenseT — USB Controller Audio & Audio Haptics
 
 > **Purpose:** Technical handoff and hardware-validation record for the USB audio feature.  
-> **Last Updated:** 04/09/2026 18:53 IST
-> **Current State:** Golden Gate non-silent ring-prefill/lazy AudioUnit-start fix implemented and awaiting
-> remote hardware retest. Core
+> **Last Updated:** 04/09/2026 19:03 IST
+> **Current State:** Core USB audio haptics and simultaneous adaptive triggers are
+> hardware-verified on a base M1 MacBook Air running macOS 27 Golden Gate. Core
 > discovery, Quadraphonic setup, controller speaker, microphone, isolated haptic channels,
 > system-audio capture, and audio-to-haptics streaming have worked on physical hardware.
-> Simultaneous adaptive triggers + audio haptics and macOS 27 streaming must be retested.
+> Remaining work is stability, recovery, signing, CPU/latency, and wired-headset validation.
 
 ---
 
@@ -29,10 +29,8 @@ Implemented:
 
 Not yet fully verified:
 - Wired 3.5 mm headset output/input (no wired headset available during this session).
-- Audio haptics continuing while L2/R2 modes are changed after the latest lifecycle fix.
 - Classic rumble returning after Audio Haptics is stopped.
 - Haptic Intensity slider response and left/right balance during streamed system audio.
-- Streamed audio haptics on macOS 27 Golden Gate after the portable AudioBufferList fix.
 - Disconnect/reconnect, sleep/wake, long-running drift, CPU use, and underrun behavior.
 
 ---
@@ -316,7 +314,7 @@ Changing tabs destroyed the Audio view, stopped ScreenCaptureKit and AVAudioEngi
 the sample handler, and restored classic-rumble mode. Trigger changes were not conflicting
 with PCM; the PCM engine no longer existed.
 
-### Fix Implemented — Awaiting Hardware Retest
+### Fix Implemented — Hardware Verified
 
 - Audio haptics are now app-global services owned by `AppDelegate`.
 - Leaving the Audio tab no longer stops capture/DSP or changes haptic mode.
@@ -332,7 +330,8 @@ Automated regression:
 testAudioHapticsModePersistsAcrossTriggerChanges
 ```
 
-The user deferred this hardware retest to the next session.
+The user later confirmed streamed audio haptics and adaptive-trigger effects continue
+simultaneously after this lifecycle fix.
 
 ---
 
@@ -486,7 +485,7 @@ Input format: 48000 Hz Float32 · 2 ch · planar buffers 1+1
 The DSP was now unquestionably producing strong haptic PCM, but nearly every processed
 buffer overflowed the ring. The AVAudioSourceNode render callback still was not pulling.
 
-### Third Root Cause and Fix — Awaiting Remote Retest
+### Third Root Cause and Fix — Hardware Verified
 
 The source engine was prepared and started before ScreenCaptureKit supplied any PCM, so the
 ring contained only silence at startup. Golden Gate idled that empty output graph before
@@ -502,6 +501,9 @@ The corrected lifecycle is:
 
 New diagnostics expose `Rendered` and `Buffered` frame counts. Added
 `testHapticSourceStartsOnlyAfterNonSilentPrefill`.
+
+The remote Golden Gate retest succeeded: video audio drove controller vibration, and L2/R2
+adaptive-trigger modes worked at the same time.
 
 ---
 
@@ -541,28 +543,27 @@ hardware testing.
 
 ---
 
-## 12. Required Retest Before Continuing
+## 12. Remaining Validation
 
 Use the rebuilt app with the controller connected through USB.
 
-### Golden Gate Buffer Compatibility
+### Golden Gate Long-Run Stability
 
 1. Start Audio Haptics on the base M1 MacBook Air running macOS 27 Golden Gate.
 2. Play the same video used for the failed test.
-3. Confirm both Captured Audio and Processed Haptic Output meters move.
-4. Confirm Processed continuously increases.
-5. Confirm Rendered continuously increases and Buffered remains bounded.
-6. Record the displayed input-format line and Dropped count.
-7. Confirm the controller vibrates; if not, send a screenshot of these diagnostics.
+3. Confirm both Captured Audio and Processed Haptic Output meters continue moving.
+4. Confirm Processed and Rendered continuously increase for at least 10 minutes.
+5. Confirm Buffered remains bounded and Dropped does not continuously climb.
+6. Record CPU use, latency, the displayed input-format line, and final counters.
 
-### A. Trigger + Audio Haptics Simultaneously
+### A. Trigger + Audio Haptics Simultaneously — Verified
 
 1. Open **Audio (USB)**.
 2. Start **Audio Haptics**.
 3. Play a video with bass and confirm vibration.
 4. Without stopping haptics, open **Left Trigger** or **Right Trigger**.
 5. Apply Weapon, Feedback, or Vibration.
-6. Confirm:
+6. Confirmed:
    - adaptive-trigger resistance works;
    - video-driven grip vibration continues;
    - returning to Audio still shows haptics running.

@@ -54,7 +54,7 @@ cat <<EOF > DualSenseT.app/Contents/Info.plist
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>
-    <true/>
+    <false/>
     <key>GCSupportsControllerUserInteraction</key>
     <true/>
     <key>NSAudioCaptureUsageDescription</key>

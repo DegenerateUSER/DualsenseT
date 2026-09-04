@@ -2,7 +2,7 @@
 
 > **Purpose:** This file tracks what has been done, what is in progress, and what remains.  
 > If a session ends mid-task, the next session should read this file FIRST to resume seamlessly.  
-> **Last Updated:** 04/09/2026 18:53 IST
+> **Last Updated:** 04/09/2026 19:21 IST
 
 ---
 
@@ -16,10 +16,54 @@ The high-rate input/UI path has since been optimized without changing HID output
 USB controller audio controls, system-audio capture, and audio-to-haptics streaming are now
 implemented. Speaker, microphone, isolated haptic channels, capture meter, and streamed video
 haptics worked on physical hardware. The tab-switch/adaptive-trigger coexistence fix is
-implemented but deferred for user retest. macOS 27 Golden Gate accepted capture and planar
-decoding but idled output graphs started before meaningful PCM existed. Continuous haptics
-now prefill a bounded ring with the first non-silent buffer before starting its pull-driven
-AVAudioSourceNode. Remote retest is pending. Test suite: **73/73 passing**.
+hardware-verified—including simultaneous adaptive triggers—on a base M1 MacBook Air running
+macOS 27 Golden Gate. Continuous haptics now prefill a bounded ring with the first non-silent
+buffer before starting its pull-driven AVAudioSourceNode. Test suite: **73/73 passing**.
+
+---
+
+## 🖥 Session: Dock Presence & Discoverable Quit (04/09/2026, 19:17 IST)
+
+**Problem:** DualSenseT did not appear in the Dock, so the user could only find a quit path
+through Activity Monitor.
+
+**Root cause:** The app explicitly configured both `NSApp.setActivationPolicy(.accessory)`
+and generated Info.plist `LSUIElement = true`, which tell macOS to hide the Dock icon.
+
+**Fix**
+
+- Activation policy changed to `.regular`.
+- `LSUIElement` changed to `false`.
+- Menu-bar helper remains available.
+- Added an application menu with **Open DualSenseT** (`⌘O`) and **Quit DualSenseT** (`⌘Q`).
+- Clicking the Dock icon now reopens the hidden dashboard through
+  `applicationShouldHandleReopen`.
+- Existing menu-bar Quit remains available.
+
+**Verification**
+
+- **73/73 tests pass.**
+- Full app bundle builds.
+- Packaged Info.plist confirms `LSUIElement => false`.
+- Dock visibility, Dock-context-menu Quit, reopen, and ⌘Q require visual user verification.
+
+---
+
+## ✅ Session: Golden Gate Audio Haptics Verified (04/09/2026, 19:02 IST)
+
+The final non-silent prefill + pull-driven AVAudioSourceNode architecture works on the remote
+base M1 MacBook Air running macOS 27 Golden Gate:
+
+- [x] Captured system/video audio reaches the app.
+- [x] DSP generates processed haptic output.
+- [x] Ring-buffer output reaches the DualSense actuators.
+- [x] Controller vibrates according to playing audio.
+- [x] Adaptive trigger modes work simultaneously with streamed audio haptics.
+- [x] Existing USB/BT features remain working.
+
+This closes the two critical audio acceptance criteria. Remaining work is hardening rather
+than core enablement: restore-after-stop, intensity range, long-run latency/CPU, reconnect,
+sleep/wake, permissions/signing, and wired headset verification.
 
 ---
 
@@ -70,11 +114,11 @@ or rejected.
 - **73/73 tests pass; full app bundle builds.**
 
 **Next remote test**
-- [ ] Both captured and processed meters move.
-- [ ] Processed and Rendered rise continuously; Buffered remains bounded.
-- [ ] Dropped stays near zero.
-- [ ] Controller vibrates with video audio.
-- [ ] Record the displayed PCM-format line.
+- [x] Both captured and processed meters move.
+- [x] Pull-driven ring reaches the controller actuators.
+- [x] Controller vibrates with video audio.
+- [x] Adaptive trigger effects work simultaneously.
+- [ ] Record long-run Processed/Rendered/Buffered/Dropped behavior.
 
 See `USB_AUDIO_HAPTICS.md` §10 for the full evidence chain and test procedure.
 
@@ -517,7 +561,7 @@ params[9]   = 0x00
 | Phase 0 | Fix BT Background Settings Persistence | ✅ Bug fixed |
 | Phase 1 | Mic LED + Player LEDs + Rumble Motor Test | ✅ DONE |
 | Phase 2 | Expand Trigger Modes (4 → 11) + Presets + UDP | ✅ Bug fixed |
-| Phase 3 | USB Audio controls + system-audio haptics | 🟡 Implemented/core HW verified — coexistence retest pending |
+| Phase 3 | USB Audio controls + system-audio haptics | ✅ Core + trigger coexistence hardware-verified |
 | Phase 4 | README + Comparison Table Update | ✅ DONE |
 | Phase 5 | Raw-HID Bluetooth via vendored hidapi (output + input over BT) | ✅ Implemented |
 | Phase 6 | Pre-BT-feature repo audit (10 fixes, 57/57 tests) | ✅ DONE — awaiting HW verify |
@@ -535,7 +579,7 @@ params[9]   = 0x00
 - [x] Per-channel speaker/haptic tests
 - [x] Permission-aware system audio capture + meter
 - [x] System audio → haptic DSP/output
-- [ ] Hardware-retest trigger coexistence after tab-lifecycle fix
+- [x] Hardware-retest trigger coexistence after tab-lifecycle fix
 - [ ] Wired headset test
 - [ ] Reconnect/long-run/CPU/latency hardening
 
